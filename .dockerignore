@@ -7,5 +7,9 @@
 !deploy/docker/
 !deploy/docker/Dockerfile.runtime
 !deploy/docker/Dockerfile.bot
+!deploy/docker/Dockerfile.compose
+!deploy/docker/Dockerfile.compose-bot
+!LICENSE
+!compose.yaml
 !requirements-discord.txt
 !requirements-discord.lock

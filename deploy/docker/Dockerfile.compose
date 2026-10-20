@@ -1,0 +1,36 @@
+# Source-only Compose runtime. No game/MOD data, Discord token or host bus.
+FROM ubuntu:26.04@sha256:c098726dd9b9733f3e885f8de0ef375206a311b0a317eadc40d347b1115fb944 AS runtime
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 gdb ca-certificates lib32gcc-s1 lib32stdc++6 libcurl4t64 \
+    && dpkg-query -W > /usr/share/ark-runtime-packages.txt \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/ark
+COPY scripts/*.py scripts/*.gdb /opt/ark/scripts/
+COPY LICENSE compose.yaml requirements-discord.lock /opt/ark/
+COPY deploy/docker/Dockerfile.compose deploy/docker/Dockerfile.compose-bot /opt/ark/deploy/docker/
+RUN mkdir -p /opt/ark/config /opt/ark/logs /opt/ark/backups /opt/ark/server/ShooterGame/Saved \
+    /run/ark/home /run/ark-locks /run/ark-control /run/ark-admin /run/ark-bot-config /stage /steam \
+    && chmod 700 /opt/ark/config /opt/ark/logs /opt/ark/backups /run/ark-locks /run/ark-control /run/ark-admin /run/ark-bot-config \
+    && python3 -c 'import uuid; from pathlib import Path; from scripts.ark_shutdown import digest,save; save(Path("/opt/ark/build-identity.json"), {"schema":1,"build_id":uuid.uuid4().hex,"os_packages_sha256":digest(Path("/usr/share/ark-runtime-packages.txt"))})' \
+    && python3 -m scripts.compose_release
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 LANG=C.UTF-8 HOME=/run/ark/home \
+    ARK_COMPOSE=1 ARK_LOCK_DIRECTORY=/run/ark-locks
+LABEL dev.ark.compose.schema="1" dev.ark.compose.application="ark-server"
+USER 0:0
+STOPSIGNAL SIGTERM
+HEALTHCHECK --interval=10s --timeout=8s --start-period=1200s --retries=3 \
+    CMD ["/usr/bin/python3", "-m", "scripts.compose_server", "health"]
+ENTRYPOINT ["/usr/bin/python3", "-m", "scripts.compose_server"]
+CMD ["serve"]
+
+# This trusted maintenance plane alone receives the dedicated ROOTLESS socket.
+# SteamCMD and candidate games run in separate containers without that socket.
+FROM runtime AS updater
+USER 0:0
+RUN apt-get update && apt-get install -y --no-install-recommends docker.io docker-buildx \
+    && dpkg-query -W > /usr/share/ark-updater-packages.txt \
+    && rm -rf /var/lib/apt/lists/*
+HEALTHCHECK NONE
+ENTRYPOINT ["/usr/bin/python3", "-m", "scripts.compose_update"]
+CMD ["run"]

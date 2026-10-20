@@ -81,6 +81,11 @@ def contract():
 
 def install_policy(root):
     root = Path(root)
+    if os.environ.get('ARK_COMPOSE') == '1':
+        from .compose_profiles import expected
+        value = expected(root, contract())
+        save(root / POLICY, value)
+        return value
     if digest(root / BINARY) != BINARY_SHA256:
         raise ShutdownError('Unreviewed server build; qualification is disabled.')
     value = {'schema': 1, 'profile': PROFILE, 'binary_sha256': BINARY_SHA256,
@@ -94,12 +99,30 @@ def policy(root):
     if not path.exists() and not path.is_symlink():
         return None
     value = private_json(path)
+    if os.environ.get('ARK_COMPOSE') == '1':
+        from .compose_profiles import expected
+        if (type(value.get('schema')) is not int or value.get('enabled') is not True
+                or not isinstance(value.get('native_points'),dict)
+                or any(type(point) is not int for point in value['native_points'].values())
+                or value != expected(Path(root), contract())):
+            raise ShutdownError('Compose native observation profile changed.')
+        return value
     if (set(value) != {'schema', 'profile', 'binary_sha256', 'observer_contract', 'enabled'}
             or type(value['schema']) is not int or value['schema'] != 1 or value['enabled'] is not True
             or value['profile'] != PROFILE or value['binary_sha256'] != BINARY_SHA256
             or value['observer_contract'] != contract() or digest(Path(root) / BINARY) != BINARY_SHA256):
         raise ShutdownError('Shutdown evidence contract changed; revalidation is required.')
     return value
+
+
+def native_points(root):
+    if os.environ.get('ARK_COMPOSE') == '1':
+        value = policy(root)
+        if value is None:
+            raise ShutdownError('A validated native observation profile is required.')
+        return value['native_points']
+    return {'save_begin': SAVE_BEGIN, 'save_complete': SAVE_COMPLETE,
+            'force_abort': FORCE_ABORT, 'exit_caller': EXIT_CALLER}
 
 
 def configuration(root):
@@ -171,7 +194,7 @@ def process_matches(pid, root, tracer_pid):
         return False
 
 
-def observed_proof(observation, intent, world, before, after):
+def observed_proof(observation, intent, world, before, after, points=None):
     """Pure, fail-closed predicate; no process effects or exception text exposed."""
     try:
         begin, complete, abort = (observation[k] for k in ('save_begin', 'save_complete', 'abort'))
@@ -198,7 +221,10 @@ def observed_proof(observation, intent, world, before, after):
             return False
         if begin['thread'] != complete['thread'] or begin['game_mode'] != complete['game_mode']:
             return False
-        if type(abort['pc']) is not int or abort['pc'] != FORCE_ABORT or type(abort['caller']) is not int or abort['caller'] != EXIT_CALLER:
+        points = points if points is not None else {'force_abort': FORCE_ABORT, 'exit_caller': EXIT_CALLER}
+        if (type(points.get('force_abort')) is not int or type(points.get('exit_caller')) is not int
+                or type(abort['pc']) is not int or abort['pc'] != points['force_abort']
+                or type(abort['caller']) is not int or abort['caller'] != points['exit_caller']):
             return False
         item = after[world]
         old = before.get(world)

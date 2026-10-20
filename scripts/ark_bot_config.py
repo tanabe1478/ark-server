@@ -94,9 +94,9 @@ class BotConfig:
         atomic_write(root / CONFIG_PATH, (json.dumps(asdict(self), indent=2) + '\n').encode())
 
 
-def load_token(root=ROOT):
+def load_token(root=ROOT, *, path=None):
     try:
-        value = private_read(Path(root) / TOKEN_PATH, limit=1024).decode('ascii').strip()
+        value = private_read(Path(path) if path is not None else Path(root) / TOKEN_PATH, limit=1024).decode('ascii').strip()
     except (UnicodeError, BotConfigError):
         raise BotConfigError('The private Discord token file is unavailable or invalid.') from None
     if re.fullmatch(r'[A-Za-z0-9_.-]{20,256}', value) is None:

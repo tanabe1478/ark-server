@@ -158,6 +158,7 @@ class SystemdBackend:
 
 @contextmanager
 def exclusive_lock(path):
+    path = ark_config.lock_path(path)
     with path.open("a") as lock:
         os.chmod(path, 0o600)
         try:

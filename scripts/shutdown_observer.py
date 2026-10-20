@@ -65,9 +65,10 @@ def install():
     def executable_loaded(event):
         nonlocal armed
         if not armed and Path(event.new_objfile.filename).resolve() == root / guard.BINARY:
-            NativePoint(guard.SAVE_BEGIN, 'save_begin')
-            NativePoint(guard.SAVE_COMPLETE, 'save_complete')
-            NativePoint(guard.FORCE_ABORT, 'abort')
+            points = guard.native_points(root)
+            NativePoint(points['save_begin'], 'save_begin')
+            NativePoint(points['save_complete'], 'save_complete')
+            NativePoint(points['force_abort'], 'abort')
             armed = True
     gdb.events.new_objfile.connect(executable_loaded)
     write()

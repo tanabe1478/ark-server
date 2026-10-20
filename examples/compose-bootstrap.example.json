@@ -1,0 +1,34 @@
+{
+  "settings": {
+    "map": "TheIsland",
+    "session_name": "ARK-Private",
+    "max_players": 13,
+    "game_port": 7777,
+    "query_port": 27015
+  },
+  "password": "REPLACE_PARTICIPANT_PASSWORD",
+  "admin_password": "REPLACE_DIFFERENT_ADMIN_PASSWORD",
+  "active_mods": [],
+  "multipliers": {
+    "taming_speed": 1,
+    "harvest_amount": 1,
+    "xp_multiplier": 1,
+    "day_cycle_speed": 1,
+    "mating_interval": 1,
+    "egg_hatch_speed": 1,
+    "baby_mature_speed": 1
+  },
+  "discord": {
+    "guild_id": "REPLACE_GUILD_ID",
+    "notification_channel_id": "REPLACE_CHANNEL_ID"
+  },
+  "auto_start": true,
+  "auto_stop": true,
+  "updates": {
+    "game": true,
+    "mods": true,
+    "images": true,
+    "interval_seconds": 3600,
+    "minimum_free_memory_bytes": 12884901888
+  }
+}

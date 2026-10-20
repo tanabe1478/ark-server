@@ -1,0 +1,21 @@
+FROM ubuntu:26.04@sha256:c098726dd9b9733f3e885f8de0ef375206a311b0a317eadc40d347b1115fb944
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
+    && dpkg-query -W > /usr/share/ark-compose-bot-packages.txt \
+    && rm -rf /var/lib/apt/lists/* && python3 -m venv /opt/bot-env
+WORKDIR /opt/ark
+COPY requirements-discord.lock /opt/ark/requirements-discord.lock
+RUN /opt/bot-env/bin/pip install --no-cache-dir --only-binary=:all: --require-hashes -r requirements-discord.lock \
+    && /opt/bot-env/bin/pip check
+COPY scripts/*.py scripts/*.gdb /opt/ark/scripts/
+COPY LICENSE compose.yaml /opt/ark/
+COPY deploy/docker/Dockerfile.compose deploy/docker/Dockerfile.compose-bot /opt/ark/deploy/docker/
+RUN mkdir -p /opt/ark/config /run/ark-control /run/ark-bot-config /run/ark-bot-lock \
+    && chmod 700 /run/ark-bot-lock && touch /opt/ark/config/discord-bot.token \
+    && /opt/bot-env/bin/python -m scripts.compose_release
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 LANG=C.UTF-8 HOME=/tmp \
+    ARK_COMPOSE=1 ARK_LOCK_DIRECTORY=/run/ark-bot-lock ARK_CONTROL_SOCKET=/run/ark-control/control.sock
+LABEL dev.ark.compose.schema="1" dev.ark.compose.application="ark-server"
+USER 0:0
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/opt/bot-env/bin/python", "-m", "scripts.compose_bot"]

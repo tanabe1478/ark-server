@@ -15,7 +15,7 @@
 
 ## 秘密の渡し方
 
-参加・管理者パスワードは権限制限したINI、Botトークンは`config/discord-bot.token`だけに保存します。トークンは設定例、引数、環境変数、Compose environment、ログへ書きません。BotはtokenとBot設定だけをread-onlyで受け取り、ゲーム認証やSavedは受け取りません。
+Composeの参加・管理者パスワードはowner-onlyの `config/compose/bootstrap.json`、受理済みの私的設定コピー、認証INIに保存します。Bot tokenは `config/compose/discord-bot.token` の専用ファイルだけです。旧ホスト方式のtoken pathは `config/discord-bot.token` です。トークンは設定例、引数、環境変数、Compose environment、ログへ書きません。BotはtokenとBot設定だけをread-onlyで受け取り、ゲーム認証やSavedは受け取りません。
 
 GitHub Actionsに実Botトークン、実Discord ID、ゲームデータを登録しません。PRのコードを秘密付きで実行する`pull_request_target`を使用しません。イメージ公開も明示的な承認・ライセンス確認後の別作業です。
 
@@ -30,11 +30,13 @@ GitHub Actionsに実Botトークン、実Discord ID、ゲームデータを登�
 ## 実行時の権限
 
 - rootless Dockerだけを許可。BotへDocker socket・systemd bus・sudoを与えない
-- IPCはホストの同一UIDだけが接続できるUnix socket。TCP/HTTP listenerなし
-- IPCはstatus/start/確認済みrestartと、時間制限したidle checkだけ
+- IPCはowner-onlyのUnix socket。Composeでは同一UIDの別PID namespace peerだけを許可し、ゲームからの接続を拒否。TCP/HTTP listenerなし
+- Bot用IPCはstatus/start/確認済みrestartと、時間制限したidle checkだけ。オーナー／更新用IPCは別volume
 - ルートFS read-only、capability全削除、no-new-privileges、private PID namespace
 - ゲームはLandlockで書込先をSaved・一時領域等へ限定し、観測証拠を書き換えられない
 - ゲームに自動再起動policyなし。未知の終了／不確定な操作は遮断し、再送しない
+
+Composeのtrusted updaterだけは専用rootless Docker socketを受け取ります。**read-only bindでもengine API権限を持ちます。** ゲーム／Bot／SteamCMD／候補ゲームへ継承しません。updaterは本番SavedをROで検査し、試験Savedを本番へ戻しません。公式mainの実行コード自動更新を有効にすると、その配布元のコード／buildを信頼することになります。詳細は [Compose信頼境界](docs/compose.md#構成と信頼境界) を参照してください。
 
 同一ホストアカウント自体が侵害された場合まで、JSON・ハッシュで改ざん不能性を保証するものではありません。ネットワーク制御・OS更新・物理的なバックアップも別途必要です。
 

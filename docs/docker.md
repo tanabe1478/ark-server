@@ -1,4 +1,6 @@
-# Docker構築と初回切替
+# ホストsystemd方式：Docker構築と初回切替
+
+> 新規の配布用構成は [Compose](compose.md)／[README](../README.md) を使用します。以下は既存のホストsystemd方式と初回Native→Docker切替の互換手順です。`activate-game` をCompose更新／既存Dockerの更新として使わないでください。
 
 対象はLinux x86_64、systemd user manager、cgroup v2、Landlock ABI 3以上です。実ゲームは別途Valveから取得します。固定観測profileに一致しないゲームでは停止検証を解禁しません。
 

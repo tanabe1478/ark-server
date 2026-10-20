@@ -48,3 +48,13 @@ jobs:
         run: |
           CONTRACT=$(python -c 'from scripts.ark_bot_container import contract; print(contract())')
           docker build --platform linux/amd64 --pull=false --build-arg BOT_CONTRACT="$CONTRACT" -f deploy/docker/Dockerfile.bot -t ark-bot:ci .
+      - name: Validate distributable Compose configuration
+        env:
+          XDG_RUNTIME_DIR: /tmp/ark-rootless-config-only
+        run: docker compose config --quiet
+      - name: Build source-only Compose runtime and updater
+        run: |
+          docker build --platform linux/amd64 --pull=false --target runtime -f deploy/docker/Dockerfile.compose -t ark-compose-server:ci .
+          docker build --platform linux/amd64 --pull=false --target updater -f deploy/docker/Dockerfile.compose -t ark-compose-updater:ci .
+      - name: Build source-only Compose Bot
+        run: docker build --platform linux/amd64 --pull=false -f deploy/docker/Dockerfile.compose-bot -t ark-compose-bot:ci .

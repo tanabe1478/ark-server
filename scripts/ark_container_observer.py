@@ -20,8 +20,11 @@ def run():
     run_id = os.environ['ARK_GUARD_RUN_ID']
     invocation = os.environ['INVOCATION_ID']
     path = root / native.DIRECTORY / 'runtime' / (run_id + '.json')
+    flags = ['-server', '-log', '-NoCrashDialog']
+    if os.environ.get('ARK_PRIVATE_BOOTSTRAP') == '1':
+        flags.append('-MultiHome=127.0.0.1')
     game = subprocess.Popen(['/usr/bin/python3', str(root / 'scripts/ark_container_exec.py'),
-        str(root), ark_config.launch_url(root), '-server', '-log', '-NoCrashDialog'],
+        str(root), ark_config.launch_url(root), *flags],
         cwd=(root / native.BINARY).parent)
     native.save(path, {'run_id':run_id, 'invocation_id':invocation, 'phase':'preparing', 'pid':game.pid})
     while True:

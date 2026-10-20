@@ -4,7 +4,15 @@
 
 Discord Developer PortalでBotを作成し、一つのguildへ`bot`と`applications.commands` scopeで招待します。必要なチャンネル閲覧・送信とアプリケーションコマンド権限を設定してください。Administratorは不要です。アプリのトークンをチャットやGitへ貼らないでください。
 
-## ローカル設定
+## Compose版の設定
+
+[README](../README.md) の `python3 -m scripts.compose_init` でtokenを非表示入力し、`config/compose/bootstrap.json` にguild／通知channelを設定します。`--check` はファイル形式・所有権の検査だけで、Discord疎通・コマンド同期・投稿を行いません。tokenは `config/compose/discord-bot.token` をread-onlyで渡します。
+
+コントローラーが、初回非公開の実際の保存終了後に安全flagを公開します。Botはscopeを固定したままflagだけを読み直すので、最初は停止保護未検証でも後から有効になります。guild／channel変更は [明示停止保守](compose.md#設定変更) とBot再配置が必要です。
+
+`ARK_DISCORD_OFFLINE=1` の検証モードはSDK client・token読込・DNS／HTTP／Gateway・command sync・投稿を行いません。制限付きIPCのstatus確認のみで、実際のDiscord認証の証拠にはしません。
+
+## 旧ホスト方式のローカル設定
 
 ```bash
 python3 -m scripts.discord_setup --configure

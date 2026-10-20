@@ -63,9 +63,20 @@ class ConfigBusyError(ConfigError):
     """A game process or maintenance task holds the server lock."""
 
 
+def lock_path(path):
+    """Compose shares a locks volume; legacy installations keep their paths."""
+    path = Path(path)
+    directory = os.environ.get("ARK_LOCK_DIRECTORY")
+    if directory and path.parent.resolve() == ROOT.resolve() and path.name in (
+        ".server.lock", ".control.lock", ".backup.lock", ".automation.lock", ".discord.lock", ".controller.lock",
+    ):
+        return Path(directory) / path.name
+    return path
+
+
 @contextmanager
 def server_lock(root):
-    with (root / ".server.lock").open("a") as lock:
+    with lock_path(root / ".server.lock").open("a") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:

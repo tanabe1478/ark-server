@@ -16,7 +16,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 TOP = {'README.md','NETWORK.md','SECURITY.md','LICENSE','NOTICE','.gitignore','.dockerignore',
-       'requirements-discord.txt','requirements-discord.lock'}
+       'requirements-discord.txt','requirements-discord.lock','compose.yaml'}
 DIRS = ('scripts','tests','docs','examples','deploy','.github')
 ALLOWED_SUFFIX = {'.py','.sh','.gdb','.md','.json','.yml','.yaml','.in','.j2','.ini','.cfg','.txt','.toml'}
 TOKEN = re.compile(rb'(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{23,28}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{25,100}(?![A-Za-z0-9_-])|mfa\.[A-Za-z0-9_-]{40,}')
@@ -36,12 +36,12 @@ def candidates(root):
             if path.is_symlink():raise ValueError('Symlinked public source.')
             if not path.is_file() or '__pycache__' in path.parts:continue
             relative=path.relative_to(root).as_posix()
-            if path.suffix not in ALLOWED_SUFFIX and path.name not in ('Dockerfile.runtime','Dockerfile.bot'):continue
+            if path.suffix not in ALLOWED_SUFFIX and path.name not in ('Dockerfile.runtime','Dockerfile.bot','Dockerfile.compose','Dockerfile.compose-bot'):continue
             if relative.startswith('deploy/'):
                 ordinary={'deploy/README.md','deploy/site.yml','deploy/ansible.cfg','deploy/requirements.txt',
                           'deploy/inventory.example.ini','deploy/secrets.example.yml','deploy/group_vars/all.yml'}
                 template=(relative.startswith(('deploy/templates/','deploy/docker/','deploy/discord/'))
-                          and (path.suffix in ('.j2','.in') or path.name in ('Dockerfile.runtime','Dockerfile.bot')))
+                          and (path.suffix in ('.j2','.in') or path.name in ('Dockerfile.runtime','Dockerfile.bot','Dockerfile.compose','Dockerfile.compose-bot')))
                 if relative not in ordinary and not template:continue
             yield path
 
@@ -59,6 +59,17 @@ def private_values(root):
     if ini.exists():
         raw=ini.read_bytes();text=raw.decode('utf-16') if raw.startswith((b'\xff\xfe',b'\xfe\xff')) else raw.decode('utf-8-sig')
         for match in re.finditer(r'(?im)^Server(?:Admin)?Password\s*=\s*([^\r\n]+)',text):values.append(match[1].strip().encode())
+    compose=root/'config/compose'
+    if (compose/'discord-bot.token').is_file():values.append((compose/'discord-bot.token').read_bytes().strip())
+    for file in (compose/'bootstrap.json',root/'config/bootstrap.accepted.json'):
+        if file.is_file():
+            data=json.loads(file.read_bytes())
+            values.extend(str(data[k]).encode() for k in ('password','admin_password') if data.get(k))
+            values.extend(str(data.get('discord',{}).get(k)).encode() for k in ('guild_id','notification_channel_id') if data.get('discord',{}).get(k))
+    request=root/'config/discord-request.json'
+    if request.is_file():
+        data=json.loads(request.read_bytes())
+        values.extend(str(data[k]).encode() for k in ('guild_id','notification_channel_id') if data.get(k))
     return [v for v in values if len(v)>=4]
 
 

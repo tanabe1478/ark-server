@@ -172,6 +172,27 @@ class DiscordBotTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(seen, [INTERVAL_SECONDS])
         self.automation.idle_check.assert_not_called()
 
+    async def test_initially_disabled_idle_loop_can_enable_without_reconnect(self):
+        from scripts.compose_bot import LiveConfig
+        from scripts import ark_shutdown as n
+        from scripts.discord_bot import build_client
+        from dataclasses import asdict,replace
+        path=self.root/'live-bot.json';base=BotConfig(guild_id=GUILD,notification_channel_id=CHANNEL)
+        n.save(path,asdict(base));client=build_client(LiveConfig(path),self.automation)
+        self.addAsyncCleanup(client.close)
+        client.is_ready=lambda:True;client.gateway_connected=True;client.notification_channel=AsyncMock()
+        self.automation.idle_check=Mock(return_value={'ok':True,'data':{'changed':False}})
+        ticks=0
+        async def wait_for(awaitable,*,timeout):
+            nonlocal ticks
+            awaitable.close();ticks+=1
+            if ticks==2:n.save(path,asdict(replace(base,shutdown_verified=True,auto_stop_enabled=True)))
+            if ticks==3:return
+            raise asyncio.TimeoutError
+        with patch('scripts.discord_bot.asyncio.wait_for',side_effect=wait_for),patch('builtins.print'):
+            await client.idle_loop()
+        self.automation.idle_check.assert_called_once_with();client.notification_channel.assert_awaited_once()
+
     async def test_shutdown_drains_accepted_jobs_without_cancellation(self):
         accepted = asyncio.Event()
         finish = asyncio.Event()

@@ -6,8 +6,8 @@ import unittest
 from scripts import ark_control
 from scripts.discord_adapter import Context, DiscordAdapter, Policy
 
-GUILD = "111111111111111111"
-CHANNEL = "222222222222222222"
+GUILD = "333333333333333333"
+CHANNEL = "444444444444444444"
 OPERATOR = "333333333333333333"
 ROLE = "444444444444444444"
 VIEWER = "555555555555555555"

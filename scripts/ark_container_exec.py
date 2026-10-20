@@ -34,7 +34,13 @@ def restrict_files(root, libc):
                 raise RuntimeError('Cannot install game filesystem rule.')
         finally:
             os.close(fd)
-    allow('/', readonly)
+    if os.environ.get('ARK_COMPOSE') == '1':
+        # The controller shares this PID namespace, not its readable files or
+        # IPC authority. The game gets libraries, assets and its own temp home.
+        for path in ('/usr', '/lib', '/lib64', '/etc', '/proc', '/sys', '/dev', root / 'server'):
+            allow(path, readonly)
+    else:
+        allow('/', readonly)
     for path in (root / 'server/ShooterGame/Saved', '/tmp', '/dev/shm', '/dev/null', '/run/ark/home'):
         allow(path, access)
     if libc.prctl(38, 1, 0, 0, 0) or libc.syscall(446, rules, 0):
@@ -45,7 +51,11 @@ def restrict_files(root, libc):
 def main():
     root = Path(sys.argv[1]).resolve()
     os.umask(0o077)
-    fd = os.open(root / '.server.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    if os.environ.get('ARK_LOCK_DIRECTORY'):
+        lock = Path(os.environ['ARK_LOCK_DIRECTORY']) / '.server.lock'
+    else:
+        lock = root / '.server.lock'
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     os.set_inheritable(fd, True)
     parent = os.getppid()

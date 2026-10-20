@@ -73,7 +73,14 @@ class Automation:
         metrics = data.get('metrics') or {}
         service_healthy = (state == 'active' and data['service'].get('Result') == 'success'
                            and type(metrics.get('pid')) is int and metrics['pid'] > 0
-                           and (data['service'].get('Runtime') != 'docker' or data['service'].get('ObserverReady') is True))
+                           and data['service'].get('PrivateBootstrap') is not True
+                           and (data['service'].get('Runtime') not in ('docker', 'compose-process') or data['service'].get('ObserverReady') is True))
+        backend = getattr(self.controller, 'backend', None)
+        if service_healthy and hasattr(backend, 'verify_readiness'):
+            try:
+                backend.verify_readiness()
+            except (OSError, ValueError):
+                service_healthy, valid = False, False
         phase = ('ready' if service_healthy and data['query_responding'] and valid and matches else 'starting_or_unavailable') if state == 'active' else state
         if state in ('inactive', 'failed'):
             try:
@@ -136,14 +143,14 @@ class Automation:
                 return response(result['request_id'], result['action'], code='operation_failed')
             invalid = not data['configuration_valid']
             if data['query_responding']:
-                if not data['service_healthy'] and data['service'].get('Runtime') != 'docker':
+                if not data['service_healthy'] and data['service'].get('Runtime') not in ('docker', 'compose-process'):
                     return response(result['request_id'], result['action'], code='outcome_unknown')
                 game = data.get('game') or {}
                 settings = ark_config.load_settings(self.root)
                 invalid = invalid or (game.get('map') != settings['map'] or game.get('max_players') != settings['max_players']
                                       or game.get('password_required') is not True)
                 if not invalid and data['phase'] == 'ready':
-                    return response(result['request_id'], result['action'], data=result['data'] | {'readiness_verified': True})
+                    return response(result['request_id'], result['action'], data=result['data'] | {'service':data['service'],'readiness_verified': True})
             # Steam may answer during map/INI initialization with provisional
             # metadata. Never declare ready, fail early, or replay the operation.
             if self.clock() >= deadline:

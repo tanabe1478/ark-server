@@ -7,7 +7,7 @@
 | UDP | 7777・7778 | ゲーム |
 | UDP | 27015 | A2S／Steam問い合わせ |
 
-設定でゲームポートを変える場合は隣接ポートも必要です。問い合わせポートは別です。RCONと管理HTTP/TCPは公開しません。Discord Botは外向きGateway/WebSocketとHTTPSを使用します。
+Compose内はゲーム7777／追加7778／query27015で固定です。ホスト公開を `ARK_GAME_PORT`／`ARK_GAME_PORT_PLUS_ONE`／`ARK_QUERY_PORT` で変更します。設定でゲームポートを変える場合は隣接ポートも必要です。問い合わせポートは別です。RCONと管理HTTP/TCPは公開しません。Discord Botは外向きGateway/WebSocketとHTTPSを使用します。
 
 rootless Dockerが公開するゲームUDPを、必要な場合だけルーターから実際のサーバーLAN IPへ転送します。例示用IP `192.0.2.10` は実機へ置き換えてください。DMZ、全ポート開放、無条件のファイアウォール初期化は不要です。
 

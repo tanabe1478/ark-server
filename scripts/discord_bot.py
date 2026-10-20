@@ -132,14 +132,19 @@ def build_client(config, automation):
                 if not self.is_ready() or not self.gateway_connected or self.mutation.locked():
                     print('Idle check skipped: Discord disconnected or another operation active.', flush=True)
                     continue
-                if config.auto_stop_enabled:
-                    try:
-                        await self.notification_channel()
-                    except Exception:
-                        print('Idle check skipped: the configured notification channel is unavailable or out of scope.', flush=True)
-                        continue
-                async with self.mutation:
-                    result = await asyncio.to_thread(automation.idle_check)
+                try:
+                    if not config.auto_stop_enabled:
+                        continue  # LiveConfig may become enabled after first private qualification.
+                    await self.notification_channel()
+                except Exception:
+                    print('Idle check skipped: configuration or notification scope is unavailable.', flush=True)
+                    continue
+                try:
+                    async with self.mutation:
+                        result = await asyncio.to_thread(automation.idle_check)
+                except Exception:
+                    print('Idle check failed; no control retry was attempted.', flush=True)
+                    continue
                 if result['ok'] and not result['data'].get('changed'):
                     print('Idle check: no stop performed.', flush=True)
                     continue

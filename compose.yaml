@@ -1,0 +1,177 @@
+name: ${COMPOSE_PROJECT_NAME:-ark}
+
+x-runtime: &runtime
+  image: ${COMPOSE_PROJECT_NAME:-ark}-server:local
+  build:
+    context: .
+    dockerfile: deploy/docker/Dockerfile.compose
+    target: runtime
+  init: true
+  restart: "no"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  pids_limit: 512
+  ulimits:
+    core: 0
+  tmpfs:
+    - /tmp:rw,nosuid,nodev,size=512m
+    - /run/ark:rw,nosuid,nodev,size=128m
+  shm_size: 256m
+  logging:
+    driver: local
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  platform:
+    <<: *runtime
+    # Never retagged by automatic game/controller updates. A later `up -d`
+    # must not recreate the stable shutdown witness just because server changed.
+    image: ${COMPOSE_PROJECT_NAME:-ark}-platform:local
+    entrypoint: [/usr/bin/python3, -m, scripts.compose_platform]
+    command: [serve]
+    network_mode: none
+    pids_limit: 32
+    stop_grace_period: 25m
+    healthcheck:
+      test: [CMD, /usr/bin/python3, -m, scripts.compose_platform, health]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+    volumes:
+      - platform:/run/ark-platform
+      - evidence:/opt/ark/logs:ro
+
+  setup:
+    <<: *runtime
+    entrypoint: [/usr/bin/python3, -m, scripts.compose_setup]
+    command: []
+    healthcheck: {disable: true}
+    volumes:
+      - game:/opt/ark/server
+      - saved:/opt/ark/server/ShooterGame/Saved
+      - settings:/opt/ark/config
+      - evidence:/opt/ark/logs
+      - backups:/opt/ark/backups
+      - locks:/run/ark-locks
+      - steam:/steam
+      - staging:/stage
+      - type: bind
+        source: ./config/compose/bootstrap.json
+        target: /run/bootstrap/bootstrap.json
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${ARK_IMPORT_DIRECTORY:-./imports}
+        target: /import
+        read_only: true
+
+  server:
+    <<: *runtime
+    depends_on:
+      setup: {condition: service_completed_successfully}
+      platform: {condition: service_healthy}
+    stop_grace_period: 25m
+    volumes:
+      - game:/opt/ark/server:ro
+      - saved:/opt/ark/server/ShooterGame/Saved
+      - settings:/opt/ark/config:ro
+      - evidence:/opt/ark/logs
+      - backups:/opt/ark/backups
+      - locks:/run/ark-locks
+      - bot_config:/run/ark-bot-config
+      - bot_ipc:/run/ark-control
+      - admin_ipc:/run/ark-admin
+      - platform:/run/ark-platform:ro
+    ports:
+      - ${ARK_BIND_ADDRESS:-0.0.0.0}:${ARK_GAME_PORT:-7777}:7777/udp
+      - ${ARK_BIND_ADDRESS:-0.0.0.0}:${ARK_GAME_PORT_PLUS_ONE:-7778}:7778/udp
+      - ${ARK_BIND_ADDRESS:-0.0.0.0}:${ARK_QUERY_PORT:-27015}:27015/udp
+
+  bot:
+    image: ${COMPOSE_PROJECT_NAME:-ark}-bot:local
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.compose-bot
+    init: true
+    restart: on-failure:5
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    stop_grace_period: 25m
+    depends_on:
+      server: {condition: service_healthy}
+    environment:
+      ARK_DISCORD_OFFLINE: ${ARK_DISCORD_OFFLINE:-0}
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=64m
+    volumes:
+      - bot_config:/run/ark-bot-config:ro
+      - bot_ipc:/run/ark-control:ro
+      - bot_locks:/run/ark-bot-lock
+      - type: bind
+        source: ./config/compose/discord-bot.token
+        target: /opt/ark/config/discord-bot.token
+        read_only: true
+        bind: {create_host_path: false}
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "3"}
+
+  updater:
+    <<: *runtime
+    image: ${COMPOSE_PROJECT_NAME:-ark}-updater:local
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.compose
+      target: updater
+    entrypoint: [/usr/bin/python3, -m, scripts.compose_update]
+    command: [run]
+    healthcheck: {disable: true}
+    stop_grace_period: 25m
+    depends_on:
+      server: {condition: service_healthy}
+    environment:
+      ARK_PROJECT: ${COMPOSE_PROJECT_NAME:-ark}
+    volumes:
+      - game:/opt/ark/server
+      - saved:/opt/ark/server/ShooterGame/Saved:ro
+      - settings:/opt/ark/config
+      - evidence:/opt/ark/logs
+      - backups:/opt/ark/backups
+      - staging:/stage
+      - locks:/run/ark-locks
+      - admin_ipc:/run/ark-admin:ro
+      - platform:/run/ark-platform:ro
+      - type: bind
+        source: ${ARK_DOCKER_SOCKET:-${XDG_RUNTIME_DIR:?Set XDG_RUNTIME_DIR for rootless Docker}/docker.sock}
+        target: /run/ark-engine.sock
+        read_only: true
+        bind: {create_host_path: false}
+
+  manager:
+    <<: *runtime
+    profiles: [tools]
+    command: [status]
+    healthcheck: {disable: true}
+    network_mode: none
+    volumes:
+      - admin_ipc:/run/ark-admin:ro
+
+volumes:
+  platform:
+  game:
+  saved:
+  settings:
+  evidence:
+  backups:
+  locks:
+  bot_config:
+  bot_ipc:
+  bot_locks:
+  admin_ipc:
+  steam:
+  staging:
