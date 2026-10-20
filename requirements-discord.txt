@@ -1,0 +1,2 @@
+# Only used in the dedicated .venv-discord; the core CLI needs no Discord SDK.
+discord.py==2.7.1

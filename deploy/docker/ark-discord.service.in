@@ -1,0 +1,23 @@
+[Unit]
+Description=ARK outbound Discord Bot container (no Docker socket in container)
+Requires=ark-docker.service ark-control.service
+After=ark-docker.service ark-control.service
+StartLimitIntervalSec=600
+StartLimitBurst=5
+ConditionPathExists=@ROOT@/config/discord-bot.token
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@
+ExecStart=/usr/bin/python3 -m scripts.ark_bot_container
+Restart=on-failure
+RestartSec=30
+RestartPreventExitStatus=78
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=1500
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

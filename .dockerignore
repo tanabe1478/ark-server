@@ -1,0 +1,11 @@
+# Allowlist only. Never send games, saves, credentials, logs, history or backups.
+**
+!scripts/
+!scripts/*.py
+!scripts/*.gdb
+!deploy/
+!deploy/docker/
+!deploy/docker/Dockerfile.runtime
+!deploy/docker/Dockerfile.bot
+!requirements-discord.txt
+!requirements-discord.lock

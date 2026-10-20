@@ -1,0 +1,22 @@
+# Bot image contains public source only. No game, secrets, host bus or Docker CLI.
+FROM ubuntu:26.04@sha256:c098726dd9b9733f3e885f8de0ef375206a311b0a317eadc40d347b1115fb944
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -m venv /opt/bot-env
+COPY requirements-discord.lock /opt/ark/requirements-discord.lock
+RUN /opt/bot-env/bin/pip install --no-cache-dir --only-binary=:all: --require-hashes -r /opt/ark/requirements-discord.lock \
+    && /opt/bot-env/bin/pip check \
+    && /opt/bot-env/bin/pip freeze > /opt/ark/installed-python-packages.txt
+COPY scripts/*.py /opt/ark/scripts/
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 LANG=C.UTF-8 HOME=/tmp \
+    ARK_CONTROL_SOCKET=/run/ark-control/control.sock
+WORKDIR /opt/ark
+RUN mkdir -p /opt/ark/config /run/ark-control \
+    && touch /opt/ark/.discord.lock /opt/ark/config/discord-bot.json /opt/ark/config/discord-bot.token
+# Mandatory rootless daemon maps this UID to the unprivileged host account.
+USER 0:0
+ARG BOT_CONTRACT
+LABEL dev.ark.bot-contract="${BOT_CONTRACT}"
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/opt/bot-env/bin/python", "-m", "scripts.discord_bot"]

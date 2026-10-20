@@ -1,0 +1,20 @@
+---
+# Connection user owns the installation and runs the systemd user services.
+ark_root_dir: "{{ ansible_facts['env']['HOME'] }}/Documents/ark-server"
+ark_map: Genesis
+ark_session_name: Genesis-Private
+ark_max_players: 13
+ark_game_port: 7777
+ark_query_port: 27015
+
+# Install a missing game, but never update an existing game implicitly.
+ark_update_game: false
+# Valve's bootstrap URL is mutable; optionally pin it with sha256:<digest>.
+ark_steamcmd_checksum: ""
+
+# Safe defaults: deploy leaves the server stopped, and adds no firewall rules.
+# Enabling autostart/timer requires linger to be requested explicitly too.
+ark_enable_linger: false
+ark_enable_autostart: false
+ark_enable_backup_timer: false
+ark_manage_firewall: false

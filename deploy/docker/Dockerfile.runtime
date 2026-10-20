@@ -1,0 +1,23 @@
+# Runtime only: no SteamCMD, no downloads/updates at game start, no Docker CLI.
+FROM ubuntu:26.04@sha256:c098726dd9b9733f3e885f8de0ef375206a311b0a317eadc40d347b1115fb944
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 gdb ca-certificates lib32gcc-s1 lib32stdc++6 libcurl4t64 \
+    && dpkg-query -W > /usr/share/ark-runtime-packages.txt \
+    && rm -rf /var/lib/apt/lists/*
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/run/ark/home LANG=C.UTF-8
+WORKDIR /opt/ark
+COPY scripts/*.py scripts/*.gdb /opt/ark/scripts/
+COPY deploy/docker/Dockerfile.runtime /opt/ark/deploy/docker/Dockerfile.runtime
+RUN mkdir -p /opt/ark/config /opt/ark/logs/shutdown /opt/ark/logs/docker /opt/ark/server /run/ark \
+    && touch /opt/ark/config/server.json /opt/ark/config/shutdown-policy.json \
+    /opt/ark/config/docker-runtime.json /opt/ark/.server.lock
+ARG SOURCE_CONTRACT
+LABEL dev.ark.source-contract="${SOURCE_CONTRACT}"
+# Root INSIDE the mandatory rootless user namespace maps to the unprivileged
+# host owner, not host root. This preserves private Saved ownership without chown.
+USER 0:0
+STOPSIGNAL SIGINT
+HEALTHCHECK --interval=30s --timeout=8s --start-period=300s --retries=3 \
+    CMD ["/usr/bin/python3", "-m", "scripts.ark_container_supervisor", "health"]
+ENTRYPOINT ["/usr/bin/python3", "-m", "scripts.ark_container_supervisor"]

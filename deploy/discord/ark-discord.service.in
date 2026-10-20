@@ -1,0 +1,20 @@
+[Unit]
+Description=ARK Discord Gateway receiver (no incoming management port)
+# User managers do not necessarily have network-online.target. Gateway reconnects on failure.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+ConditionPathExists=@ROOT@/config/discord-bot.token
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@
+ExecStart=@ROOT@/.venv-discord/bin/python -m scripts.discord_bot
+Restart=on-failure
+RestartSec=30
+RestartPreventExitStatus=78
+TimeoutStopSec=1500
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

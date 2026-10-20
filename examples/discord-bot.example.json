@@ -1,0 +1,8 @@
+{
+  "guild_id": null,
+  "notification_channel_id": null,
+  "auto_stop_enabled": false,
+  "shutdown_verified": false,
+  "startup_grace_seconds": 3600,
+  "readiness_timeout_seconds": 600
+}

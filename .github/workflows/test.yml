@@ -1,0 +1,50 @@
+name: source-tests
+'on':
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python: ['3.12', '3.14']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0, Node 24
+        with:
+          python-version: ${{ matrix.python }}
+      - run: |
+          python -m pip install --only-binary=:all: --require-hashes -r requirements-discord.lock
+      - run: |
+          python -m pip install --only-binary=:all: -r deploy/requirements.txt
+      - run: python -m pip check
+      - run: python -m unittest discover -s tests -p 'test_*.py'
+      - run: python -m compileall -q scripts
+      - run: for script in scripts/*.sh; do bash -n "$script"; done
+      - run: python -m scripts.public_export
+      - run: python -m scripts.public_export --history
+      - run: git diff --check
+  image-builds:
+    # Builds only; no game assets, Bot credentials, privileged runtime or registry push.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0, Node 24
+        with:
+          python-version: '3.14'
+      - name: Build source-only runtime
+        run: |
+          CONTRACT=$(python -c 'from scripts.ark_docker import source_contract,contract_id; print(contract_id(source_contract()))')
+          docker build --platform linux/amd64 --pull=false --build-arg SOURCE_CONTRACT="$CONTRACT" -f deploy/docker/Dockerfile.runtime -t ark-runtime:ci .
+      - name: Build source-only Bot
+        run: |
+          CONTRACT=$(python -c 'from scripts.ark_bot_container import contract; print(contract())')
+          docker build --platform linux/amd64 --pull=false --build-arg BOT_CONTRACT="$CONTRACT" -f deploy/docker/Dockerfile.bot -t ark-bot:ci .

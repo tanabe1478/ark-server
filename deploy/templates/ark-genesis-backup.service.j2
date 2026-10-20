@@ -1,0 +1,8 @@
+[Unit]
+Description=Consistent ARK backup (brief server downtime)
+
+[Service]
+Type=oneshot
+ExecStart={{ ark_root_dir }}/scripts/backup.sh
+TimeoutStartSec=30min
+UMask=0077

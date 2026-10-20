@@ -1,0 +1,20 @@
+[Unit]
+Description=ARK owner-only local control IPC (no TCP listener)
+After=ark-docker.service
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=30
+WorkingDirectory=@ROOT@
+ExecStart=/usr/bin/python3 -m scripts.ark_control_ipc
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=1500
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

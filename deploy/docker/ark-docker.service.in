@@ -1,0 +1,27 @@
+[Unit]
+Description=ARK dedicated rootless Docker engine
+Documentation=https://docs.docker.com/engine/security/rootless/
+Requires=dbus.socket
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+[Service]
+Environment=PATH=@ROOT@/.docker-tools/root/usr/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+Environment=DOCKERD_ROOTLESS_ROOTLESSKIT_STATE_DIR=%t/ark-docker-rootless
+ExecStart=/usr/share/docker.io/contrib/dockerd-rootless.sh --host=unix://%t/ark-docker.sock --data-root=%h/.local/share/ark-docker --exec-root=%t/ark-docker-exec --pidfile=%t/ark-docker.pid --log-level=warn
+ExecReload=/bin/kill -s HUP $MAINPID
+TimeoutStartSec=120
+TimeoutStopSec=180
+Restart=on-failure
+RestartSec=30
+LimitNOFILE=infinity
+LimitNPROC=infinity
+TasksMax=infinity
+Delegate=yes
+Type=notify
+NotifyAccess=all
+KillMode=mixed
+UMask=0077
+
+[Install]
+WantedBy=default.target

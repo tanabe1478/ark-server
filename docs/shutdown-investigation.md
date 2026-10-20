@@ -1,0 +1,13 @@
+# ASEの停止経路の調査方法
+
+対応固定ビルドについて、独立した新規world・MODなしでも、SIGINT、SIGTERM、試験用localhost RCONのSaveWorld→DoExitでSIGABRTが再現する比較を行っています。本番RCONを有効化する理由にはしません。
+
+native stackと逆アセンブルでは、真偽値を検査してabortを呼ぶ経路と、そのcallerを確認しています。stripped binaryのため、推定したUnrealのソース関数名を確定したものとして扱いません。既知の経路だから全signal 6が安全、という結論にはしません。
+
+その後、保存開始・完了と既知abortをnonceに結び付ける観測を追加しました。現在の運転条件は[保存証拠付き警告停止](evidence-qualified-shutdown.md)です。
+
+再調査は必ず別データ領域・別ポートで行います。ネットワークnamespaceのない実験を「完全なネットワーク隔離」と呼ばず、bind先とルーター／ファイアウォールの状態を区別してください。実データコピー、rootless container、loopback公開についてもそれぞれ検証が必要です。
+
+GDB親の終了、unitの消失、保存コマンドの応答、ファイル更新だけではゲームの正常終了や内容整合性は証明できません。無効な測定・失敗した観測も私的に保全し、成功試験へ数えません。
+
+個別のstack全文・unit ID・実パス・Saved・調査ログはpublic repositoryへ置かないでください。固定profileのバイナリhash・定数は公開ソースを参照し、別buildへの無審査の流用を避けます。

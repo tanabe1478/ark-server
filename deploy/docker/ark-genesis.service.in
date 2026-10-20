@@ -1,0 +1,22 @@
+[Unit]
+Description=ARK dedicated game container (evidence-gated, rootless)
+Requires=ark-docker.service
+After=ark-docker.service
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=notify
+NotifyAccess=main
+WorkingDirectory=@ROOT@
+ExecStart=/usr/bin/python3 -m scripts.ark_docker_runner @DATA_ROOT@
+Restart=no
+KillMode=mixed
+KillSignal=SIGINT
+TimeoutStartSec=90
+TimeoutStopSec=180
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

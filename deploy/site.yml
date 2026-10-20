@@ -1,0 +1,253 @@
+---
+- name: Deploy a private ARK ASE server to an Ubuntu home PC
+  hosts: ark
+  gather_facts: true
+  become: false
+  # One account/host runs one ark-genesis instance. No automatic game start.
+  vars:
+    ark_user_environment:
+      XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['user_uid'] }}"
+      DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ ansible_facts['user_uid'] }}/bus"
+
+  pre_tasks:
+    - name: Require a non-root x86_64 Ubuntu target and a safe installation path
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['distribution_version'] is version('24.04', '>=')
+          - ansible_facts['architecture'] == 'x86_64'
+          - ansible_facts['user_uid'] | int != 0
+          - ark_root_dir is match('^/[A-Za-z0-9_./-]+$')
+          - "'/../' not in ark_root_dir + '/'"
+          - "'/./' not in ark_root_dir + '/'"
+          - ark_root_dir.startswith(ansible_facts['env']['HOME'] + '/')
+          - not (ark_enable_autostart | bool or ark_enable_backup_timer | bool) or ark_enable_linger | bool
+        fail_msg: >-
+          Use a non-root Ubuntu SSH user and an installation directory under that
+          user's home (no spaces, percent signs or ..). Autostart/timer require linger.
+
+    - name: Validate non-secret game settings
+      ansible.builtin.assert:
+        that:
+          - ark_map is string and ark_map is match('^[A-Za-z0-9_]+$') and ark_map is not search('[^A-Za-z0-9_]')
+          - ark_session_name is string and ark_session_name | length >= 1 and ark_session_name | length <= 64
+          - ark_session_name.strip() | length > 0 and ark_session_name.isprintable()
+          - ark_session_name is not search('[?=&]')
+          - ark_max_players is integer and 1 <= ark_max_players <= 255
+          - ark_game_port is integer and 1024 <= ark_game_port <= 65534
+          - ark_query_port is integer and 1024 <= ark_query_port <= 65535
+          - ark_query_port not in [ark_game_port, ark_game_port + 1]
+        fail_msg: Check the map, session name, player count and non-overlapping UDP ports.
+
+    - name: Require separate strong passwords supplied through Ansible Vault
+      ansible.builtin.assert:
+        that:
+          - ark_server_password is defined
+          - ark_admin_password is defined
+          - ark_server_password is string and ark_server_password is match('^[A-Za-z0-9_-]{12,128}$')
+          - ark_admin_password is string and ark_admin_password is match('^[A-Za-z0-9_-]{12,128}$')
+          - ark_server_password is not search('[^A-Za-z0-9_-]')
+          - ark_admin_password is not search('[^A-Za-z0-9_-]')
+          - ark_server_password != ark_admin_password
+        fail_msg: Supply two different 12-128 character passwords from secrets.yml.
+      no_log: true
+
+    - name: Check that the server, backup and timer are stopped before changing files
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - --user
+          - is-active
+          - ark-genesis.service
+          - ark-genesis-backup.service
+          - ark-genesis-backup.timer
+      environment: "{{ ark_user_environment }}"
+      register: ark_activity
+      changed_when: false
+      failed_when: ark_activity.rc not in [0, 3, 4]
+      check_mode: false
+
+    - name: Refuse to deploy over running services
+      ansible.builtin.assert:
+        that:
+          - "'active' not in ark_activity.stdout_lines"
+          - "'activating' not in ark_activity.stdout_lines"
+          - "'deactivating' not in ark_activity.stdout_lines"
+          - "'reloading' not in ark_activity.stdout_lines"
+        fail_msg: >-
+          Stop ark-genesis-backup.timer and ark-genesis.service on the target first.
+          Also wait for any backup to finish. Deployment never disconnects players for you.
+
+  tasks:
+    - name: Install runtime dependencies (only this task needs sudo by default)
+      become: true
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gzip
+          - tar
+          - util-linux
+          - python3
+          - libatomic1
+          - libstdc++6
+          - lib32gcc-s1
+          - lib32stdc++6
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install UFW only when firewall management is requested
+      become: true
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+      when: ark_manage_firewall | bool
+
+    - name: Create private installation directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0700"
+      loop:
+        - "{{ ark_root_dir }}"
+        - "{{ ark_root_dir }}/scripts"
+        - "{{ ark_root_dir }}/config"
+        - "{{ ark_root_dir }}/logs"
+        - "{{ ark_root_dir }}/backups"
+        - "{{ ark_root_dir }}/steamcmd"
+        - "{{ ark_root_dir }}/server"
+        - "{{ ansible_facts['env']['HOME'] }}/.config/systemd/user"
+
+    - name: Copy only source scripts, never the controller's Saved or credentials
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ ark_root_dir }}/scripts/{{ item | basename }}"
+        mode: "0700"
+      loop: "{{ query('ansible.builtin.fileglob', playbook_dir + '/../scripts/*.sh', playbook_dir + '/../scripts/*.py', playbook_dir + '/../scripts/*.gdb') }}"
+
+    - name: Inspect the SteamCMD bootstrap
+      ansible.builtin.stat:
+        path: "{{ ark_root_dir }}/steamcmd/steamcmd.sh"
+      register: ark_steamcmd
+
+    - name: Bootstrap SteamCMD from Valve (not during check mode)
+      when:
+        - not ark_steamcmd.stat.exists
+        - not ansible_check_mode
+      block:
+        - name: Download the official bootstrap over HTTPS
+          ansible.builtin.get_url:
+            url: https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
+            dest: "{{ ark_root_dir }}/logs/steamcmd_linux.tar.gz"
+            checksum: "{{ ark_steamcmd_checksum | default(omit, true) }}"
+            mode: "0600"
+
+        - name: Extract SteamCMD as the unprivileged target user
+          ansible.builtin.unarchive:
+            src: "{{ ark_root_dir }}/logs/steamcmd_linux.tar.gz"
+            dest: "{{ ark_root_dir }}/steamcmd"
+            remote_src: true
+            creates: "{{ ark_root_dir }}/steamcmd/steamcmd.sh"
+
+    - name: Inspect the installed game binary
+      ansible.builtin.stat:
+        path: "{{ ark_root_dir }}/server/ShooterGame/Binaries/Linux/ShooterGameServer"
+      register: ark_binary
+
+    - name: Install the missing game, or update only when explicitly requested
+      ansible.builtin.command:
+        argv:
+          - "{{ ark_root_dir }}/scripts/install-update.sh"
+      when:
+        - not ansible_check_mode
+        - not ark_binary.stat.exists or ark_update_game | bool
+      changed_when: true
+
+    - name: Merge managed INI keys and write non-secret launch settings atomically
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ ark_root_dir }}/scripts/ark_config.py"
+          - apply
+        stdin: >-
+          {{ {'settings': {'map': ark_map, 'session_name': ark_session_name,
+          'max_players': ark_max_players, 'game_port': ark_game_port,
+          'query_port': ark_query_port}, 'password': ark_server_password,
+          'admin_password': ark_admin_password} | to_json }}
+      register: ark_configuration
+      changed_when: ark_configuration.stdout == 'changed'
+      when: not ansible_check_mode
+      no_log: true
+      diff: false
+
+    - name: Install portable systemd user units
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "{{ ansible_facts['env']['HOME'] }}/.config/systemd/user/{{ item }}"
+        mode: "0644"
+      loop:
+        - ark-genesis.service
+        - ark-genesis-backup.service
+        - ark-genesis-backup.timer
+
+    - name: Reload user units without starting or restarting the game
+      ansible.builtin.systemd_service:
+        scope: user
+        daemon_reload: true
+      environment: "{{ ark_user_environment }}"
+      when: not ansible_check_mode
+
+    - name: Enable linger only when explicitly requested (never disable existing linger)
+      become: true
+      ansible.builtin.command:
+        argv:
+          - loginctl
+          - enable-linger
+          - "{{ ansible_facts['user_id'] }}"
+        creates: "/var/lib/systemd/linger/{{ ansible_facts['user_id'] }}"
+      when: ark_enable_linger | bool
+
+    - name: Configure next-boot autostart without starting the game now
+      ansible.builtin.systemd_service:
+        scope: user
+        name: ark-genesis.service
+        enabled: "{{ ark_enable_autostart | bool }}"
+      environment: "{{ ark_user_environment }}"
+      when: not ansible_check_mode
+
+    - name: Configure the explicitly requested backup schedule
+      ansible.builtin.systemd_service:
+        scope: user
+        name: ark-genesis-backup.timer
+        enabled: "{{ ark_enable_backup_timer | bool }}"
+        state: "{{ 'started' if ark_enable_backup_timer | bool else 'stopped' }}"
+      environment: "{{ ark_user_environment }}"
+      when: not ansible_check_mode
+
+    - name: Add only the requested UDP rules, without enabling or resetting UFW
+      become: true
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/ufw
+          - allow
+          - "{{ item }}"
+          - comment
+          - ARK managed UDP
+      loop:
+        - "{{ ark_game_port }}:{{ ark_game_port + 1 }}/udp"
+        - "{{ ark_query_port }}/udp"
+      register: ark_firewall
+      changed_when: "'Skipping' not in ark_firewall.stdout"
+      environment:
+        LC_ALL: C
+      when: ark_manage_firewall | bool
+
+    - name: Explain the intentionally separate start and network verification steps
+      ansible.builtin.debug:
+        msg:
+          - "Deployment never starts the game. Start it manually after checking settings and Saved."
+          - "On target: systemctl --user start ark-genesis.service"
+          - "On target: python3 {{ ark_root_dir }}/scripts/query.py"
+          - "Forward UDP {{ ark_game_port }}-{{ ark_game_port + 1 }} and {{ ark_query_port }} to the target's reserved LAN IP."
+          - "Check mode skips SteamCMD/game download and secret configuration; it is not a full deployment test."
