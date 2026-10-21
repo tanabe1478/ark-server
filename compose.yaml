@@ -106,6 +106,10 @@ services:
       server: {condition: service_healthy}
     environment:
       ARK_DISCORD_OFFLINE: ${ARK_DISCORD_OFFLINE:-0}
+      # Public IPv4 is discovered over HTTPS; this is the externally published query port.
+      ARK_QUERY_PORT: ${ARK_QUERY_PORT:-27015}
+      # Optional override for DDNS or a router that remaps the external query port.
+      ARK_PUBLIC_QUERY_ADDRESS: ${ARK_PUBLIC_QUERY_ADDRESS:-}
     tmpfs:
       - /tmp:rw,nosuid,nodev,size=64m
     volumes:

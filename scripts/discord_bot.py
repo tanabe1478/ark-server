@@ -6,13 +6,15 @@ import os
 import signal
 import sys
 
-from .ark_automation import Automation, INTERVAL_SECONDS, failure_text, format_status
+from .ark_automation import Automation, INTERVAL_SECONDS
+from .discord_messages import JoinInfo, JoinResolver, failure_text, format_status, ready_text, stopped_text
 from .ark_bot_config import BotConfig, BotConfigError, load_token
 from .ark_control import ControlError, exclusive_lock
 from .discord_adapter import Context, DiscordAdapter, GuildPolicy
 
 
-def build_client(config, automation):
+def build_client(config, automation, *, join=None):
+    join = JoinInfo() if join is None else join
     # Library error strings can contain interaction/webhook URLs. Suppress raw logs.
     for name in ('discord', 'aiohttp'):
         logger = logging.getLogger(name)
@@ -23,6 +25,11 @@ def build_client(config, automation):
 
     adapter = DiscordAdapter(GuildPolicy(config.require_guild()), automation)
     guild = discord.Object(id=int(config.guild_id))
+
+    async def connection_info(*, force=False):
+        if isinstance(join, JoinResolver):
+            return await asyncio.to_thread(join.resolve, force=force)
+        return join
 
     class Bot(discord.Client):
         def __init__(self):
@@ -97,15 +104,10 @@ def build_client(config, automation):
                         result = await asyncio.to_thread(adapter.prepare, self.context(interaction), action, interaction_id=str(interaction.id))
                     else:
                         result = await asyncio.to_thread(adapter.confirm, self.context(interaction), token)
-                    text = ('ARKの準備が整いました。Steamから参加できます。' if result['ok'] else failure_text(result))
-                    warnings = result.get('data', {}).get('warnings', [])
-                    if 'expected_native_abort' in warnings:
-                        text += '\n警告: 前回停止は保存完了経路を確認した既知SIGABRT（6）です。正常終了0とは区別して記録しています。'
-                    elif 'reviewed_previous_failure' in warnings:
-                        text += '\n前回の未確認終了を退避・明示レビューした上で起動しました。正常終了扱いにはしていません。'
-                    await self.notify(interaction, text)
+                    info = await connection_info(force=result.get('data', {}).get('changed') is True) if result.get('ok') is True else JoinInfo()
+                    await self.notify(interaction, ready_text(result, action, info))
             except Exception:
-                await self.notify(interaction, '結果の通知処理を完了できませんでした。操作を再送せず、/ark status とローカル記録を確認してください。')
+                await self.notify(interaction, '結果を通知できませんでした。操作を繰り返さず /ark status で確認し、管理者に連絡してください。')
             finally:
                 self.jobs.discard(task)
 
@@ -148,9 +150,7 @@ def build_client(config, automation):
                 if result['ok'] and not result['data'].get('changed'):
                     print('Idle check: no stop performed.', flush=True)
                     continue
-                text = '無人状態を再確認し、ARKを停止しました。' if result['ok'] else failure_text(result)
-                if result.get('data', {}).get('warnings'):
-                    text += '\n保存完了経路と既知SIGABRT（6）を確認しました。正常終了0ではなく、警告付き停止です。'
+                text = stopped_text(result)
                 try:
                     channel = await self.notification_channel()
                     await channel.send(text, allowed_mentions=discord.AllowedMentions.none())
@@ -173,7 +173,7 @@ def build_client(config, automation):
     client = Bot()
     group = app_commands.Group(name='ark', description='ARKの状態確認・起動・再起動')
 
-    @group.command(name='status', description='ARKの状態・人数・稼働時間・メモリを確認')
+    @group.command(name='status', description='ARKの稼働状況・参加人数・Steamからの参加方法を確認')
     async def status(interaction: discord.Interaction):
         if not await client.permit(interaction, 'status'):
             return
@@ -182,7 +182,7 @@ def build_client(config, automation):
         try:
             await interaction.response.defer(thinking=True)
             result = await asyncio.to_thread(automation.execute, 'status')
-            await interaction.edit_original_response(content=format_status(result), allowed_mentions=discord.AllowedMentions.none())
+            await interaction.edit_original_response(content=format_status(result, await connection_info()), allowed_mentions=discord.AllowedMentions.none())
         finally:
             client.jobs.discard(task)
 
@@ -209,7 +209,7 @@ def build_client(config, automation):
 
         async def on_error(self, interaction, error, item):
             adapter.cancel(client.context(self.origin), self.token)
-            await client.notify(interaction, '確認処理を完了できませんでした。操作を再送せず、状態とローカル記録を確認してください。')
+            await client.notify(interaction, '確認処理を完了できませんでした。操作を繰り返さず /ark status で確認し、管理者に連絡してください。')
 
         async def interaction_check(self, interaction: discord.Interaction):
             if interaction.user.id != self.owner:
@@ -307,7 +307,7 @@ def automation_for(config):
 
 
 async def run(config, token):
-    client = build_client(config, automation_for(config))
+    client = build_client(config, automation_for(config), join=JoinResolver.from_environment())
     event = asyncio.Event()
     loop = asyncio.get_running_loop()
     loop.set_exception_handler(lambda loop, context: print('Background task failed; sensitive exception details are suppressed.', flush=True))

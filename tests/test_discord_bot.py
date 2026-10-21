@@ -65,8 +65,60 @@ class DiscordBotTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.backend.calls, ['start'])
         text = interaction.channel.send.call_args.args[0]
         self.assertIn('<@523456789012345678>', text)
-        self.assertIn('準備が整いました', text)
+        self.assertIn('起動しました', text)
+        self.assertIn('ゲームサーバー', text)
+        self.assertNotIn('SIGABRT', text)
         self.assertNotIn('private', text)
+
+    async def test_ready_notification_discovers_address_without_repeating_game_action(self):
+        from scripts.discord_messages import JoinResolver
+        from scripts.discord_bot import build_client
+        resolver = JoinResolver(port=28015, discover=Mock(return_value='8.8.8.8'))
+        client = build_client(self.config, self.automation, join=resolver)
+        self.addAsyncCleanup(client.close)
+        import discord
+        group = client.tree.get_commands(guild=discord.Object(id=int(GUILD)))[0]
+        interaction = self.interaction()
+        await group.get_command('start').callback(interaction)
+        text = interaction.channel.send.call_args.args[0]
+        self.assertIn('8.8.8.8:28015', text)
+        self.assertIn('お気に入り', text)
+        self.assertEqual(self.backend.calls, ['start'])
+        resolver.discover.assert_called_once_with()
+
+    async def test_status_uses_participant_text_and_automatic_address_without_game_mutation(self):
+        from scripts.discord_messages import JoinResolver
+        from scripts.discord_bot import build_client
+        resolver = JoinResolver(discover=Mock(return_value='8.8.8.8'))
+        client = build_client(self.config, self.automation, join=resolver)
+        self.addAsyncCleanup(client.close)
+        import discord
+        group = client.tree.get_commands(guild=discord.Object(id=int(GUILD)))[0]
+        interaction = self.interaction()
+        await group.get_command('status').callback(interaction)
+        text = interaction.edit_original_response.call_args.kwargs['content']
+        self.assertIn('停止中', text)
+        self.assertIn('/ark start', text)
+        self.assertIn('8.8.8.8:27015', text)
+        self.assertNotIn('SIGABRT', text)
+        self.assertNotIn('MainPID', text)
+        self.assertEqual(self.backend.calls, [])
+
+    async def test_address_lookup_failure_does_not_repeat_or_misreport_successful_start(self):
+        from scripts.discord_messages import JoinResolver
+        from scripts.discord_bot import build_client
+        resolver = JoinResolver(discover=Mock(side_effect=RuntimeError('private-network-detail')))
+        client = build_client(self.config, self.automation, join=resolver)
+        self.addAsyncCleanup(client.close)
+        import discord
+        group = client.tree.get_commands(guild=discord.Object(id=int(GUILD)))[0]
+        interaction = self.interaction()
+        await group.get_command('start').callback(interaction)
+        text = interaction.channel.send.call_args.args[0]
+        self.assertIn('起動しました', text)
+        self.assertIn('アドレスを取得できませんでした', text)
+        self.assertNotIn('private-network-detail', text)
+        self.assertEqual(self.backend.calls, ['start'])
 
     async def test_wrong_guild_and_dms_denied_before_defer_or_mutation(self):
         for guild in (None, '623456789012345678'):
