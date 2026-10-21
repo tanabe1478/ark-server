@@ -86,7 +86,7 @@ docker compose logs -f server
 
 `auto_start: false` ならゲームは起動せず、コントローラーとBotだけが利用可能になります。最初の `/ark start` 時に非公開の保存終了検証を行います。
 
-既存データは通常起動で上書き初期化しません。[明示import手順](docs/compose.md#既存データのimport)を使ってください。
+既存データは通常起動で上書き初期化しません。[明示import手順](docs/compose.md#既存データのimport)を使ってください。importの既存認証は元INIとの一致を確認して保持し、新規用の長さ制約を理由にパスワードを黙って変更しません。
 
 ## 日常の操作
 
@@ -186,6 +186,7 @@ docker compose exec updater python3 -m scripts.compose_update check
 ## 関連ドキュメント
 
 - [Composeの構成・import・設定・更新復旧](docs/compose.md)
+- [本番切替の受入確認：Discord・外部参加・ゲーム内／MOD](docs/acceptance.md)
 - [Discordの権限とコマンド](docs/discord.md)
 - [保存終了の証拠と制約](docs/evidence-qualified-shutdown.md)
 - [既存のホストsystemd方式／初回Docker移行](docs/docker.md) — 互換運用向け。Compose更新手順とは別です。

@@ -69,6 +69,8 @@ docker compose up -d
 
 `setup` はsource inventoryの変化を確認し、installerや移行パッケージのstartスクリプトを実行しません。既存Saved、初期化中断marker、既存launch ledgerがある場合は再初期化しません。失敗したvolumeを消して同じ移行を成功扱いにするのではなく、原本と失敗記録を残し、原因を確認してください。
 
+新規設定のパスワードは12～128文字です。ただし、明示importで元のINIと完全一致する既存認証を引き継ぐ場合は、対応文字の1～128文字をそのまま保持できます。この例外を新しい短いパスワードの設定には使えません。受理済みimportの通常up／設定保守でも現行INIとの一致を再確認し、認証情報を黙って変更しません。
+
 INIの既存配列・重複エントリーは保持して検査します。7つの管理対象数値は型付き値で比較するため、同値の表記／既定1.0の省略は許容します。その他の既存値、認証、MOD順序、loot配列の変更を自動で無視しません。受領証の設定ファイル全体のハッシュは、この意味比較とは別に厳密です。
 
 最初の起動は非公開の保存終了検証を含みます。A2S・自動再読込が通っても、移行内容の完全性を保証しません。キャラクター、トライブ、建築物、恐竜、アイテム、MODと外部参加は別途確認します。旧運用の停止状態・証拠は保ったまま切り替えてください。
@@ -140,12 +142,13 @@ docker compose exec updater python3 -m scripts.compose_update validate-current -
 | `deferred` | 人数・猶予・メモリー・ディスク・platform停止などで保留 |
 | `candidate_rejected` / `candidate_blocked` | 非対応配置・不合格候補。旧assets／進行を維持 |
 | `qualifying` | 最新Savedコピーで実際の2-cycle検証中 |
-| `applying` | 旧assets保全後の適用中。中断を暗黙にやり直さない |
+| `applying` | 旧設定／必要な旧assets保全後の適用中。中断を暗黙にやり直さない |
 | `commit_requested` | 送信前にdurable記録済み。応答不明なら再送しない |
 | `handoff` / `handoff_replacing` | 信頼済み保守helperへupdater自身の交換を引継ぎ |
 | `completed` | 適用と必要な引継ぎが完了 |
 | `platform_stopped` | 適用後のplatform停止を確認。未完の保守引継ぎをcompletedへ変換しない |
 | `blocked` | 不明な効果・不完全な証拠。自動再試行しない |
+| `owner_closed_interrupted` | 所有者が中断事実を保全してjobを終結。ゲームの未知の終了・latchは維持し、再送／起動を承認しない |
 
 非公開の試験／初回資格確認では、起動前のprofile／tribeの消失・空化と、ワールドの10%を超える大幅縮小も拒否します。これは重大な退行の検出であり、ゲーム内容の完全性証明ではありません。通常プレイ中の正当な進行変化に、この起動試験用のサイズ比較を当てません。
 
@@ -154,6 +157,8 @@ docker compose exec updater python3 -m scripts.compose_update validate-current -
 ネイティブ配置probeは本番停止より前に行います。命令fingerprintが合うことだけでは承認せず、実データコピーの2-cycle証拠も要求します。新compiler／構造変更は旧版を維持して不合格になります。
 
 適用前に旧版で止め、候補のinput Saved／設定／assets／image／保存受領証を再照合します。ワールドを古いコピーで置き換えません。適用中の本番Saved mountはROです。
+
+ゲーム／MODが変わらないソースのみの更新では、候補probe／2-cycleへ現行program volumeをROで渡します。適用helperもカーネルRO mountを必須とし、programの複製・削除・再配置を行わず、完全ハッシュ一致とversion不変を検査します。旧設定とprogram manifestは保全します。Savedは従来どおり独立コピーで検証し、trialを本番へ返しません。ゲーム／MODを変える場合は、別assetsの配置と旧programの実コピー保全を省略しません。
 
 未知のnative crash、OOM、timeout、observer喪失、途中の試験終了は不完全な証拠として保留します。ゲームを一度も起動していないと証明できる候補の事前失敗だけは、未変更の旧版を共通guard経由で再開できます。readiness timeoutを理由に本番ゲームや試験ゲームをkill／再起動しません。試験側に生存中／不明の子がある場合は親helperも保持し、updaterをblockedにします。稼働helperが残る間のrecoverは拒否されます。ログ・実プロセス・Savedを所有者が確認するまで、自動終了や再実行は行いません。
 
@@ -168,6 +173,16 @@ docker compose exec updater python3 -m scripts.compose_update recover JOB_ID --c
 対応するpending／保全が残り、同じjobのhelperが動いておらず、より新しいlaunchがなく、commit送信が記録されていない場合だけ、未変更旧版の中止または保全付き再適用を行います。試験Savedの本番復元はしません。
 
 commit送信後の応答不明や、より新しい進行がある場合は自動復旧対象外です。marker削除、`reset-failed`、台帳削除、古いSavedの復元で通過させないでください。必要なインフラ交換だけの復旧でも、ゲームのcommitを再送しないことと、現在のコンテナ／受領証の確認が必要です。
+
+ホスト再起動でpost-commitの起動が不明になったjobを、再送せずに所有者が終結する専用操作もあります。
+
+```bash
+docker compose run --no-deps --entrypoint /usr/bin/python3 updater -m scripts.compose_review seal-interrupted JOB_ID --confirm
+```
+
+実適用記録・ローカルcommit受領・現在runtime・正確な交換後container ID／image・前bootの未確定invocation・実停止・helper不在を要求し、現在Savedと元記録を新しい宛先へ保全します。結果は `owner_closed_interrupted` であり、成功／clean exitではありません。commit／適用／起動は再送せず、元のゲーム状態・automation latch・未知の終了を変更しません。新たな起動許可も発行しません。同一bootの不明状態や生存helperはこの操作で通過させられません。
+
+ゲームを再開するためのデータ引継ぎは別の明示判断です。直前の資格済みinputとのworld／profile／tribe比較、独立コピーでの保存再読込と実ゲーム内確認を行い、現在データが不明なら引き続き保留します。終結操作を古いSavedへの自動rollbackや起動承認の代わりには使わないでください。
 
 `compose down` と交換が競合すると、Composeが最初に列挙した旧container IDがすでに無い場合があります。このため、updaterが交換しない `platform` 証人を別serviceとして常設します。署名の代わりになるものではなく、専用volumeのowner-only generation／boot／heartbeatと明示closing状態です。新しいコントローラーはclosing中の起動を拒否し、現コントローラーの実際の保存終了後に同じgeneration／hostname／broker run IDのdrain記録を作ります。証人はそれを待って終了します。未知のlease失効は別のdurable holdとなり、自動再開しません。
 
@@ -198,10 +213,10 @@ docker compose exec updater python3 -m scripts.compose_update validate-source so
 
 ## リリース時の検証範囲と制限
 
-独立したrootless環境で、公式Steamからの新規取得、公式Workshopの8MOD展開、Aquaticaの非公開保存終了→公開A2S待受け→保存終了、同一invocationへのno-op start、restart、設定のみの復旧とworld不変を確認しました。最新Savedコピーでの実際の2-cycle／progress-shape検証、停止希望を保持した適用・3サービス交換・updater引継ぎも確認しています。旧版の30分待機上限に達した適用は不明として保留され、helperの実終了・Saved不変・新規起動なしを確認した後の明示的な所有者復旧で完了しました。現在の適用待機上限は2時間です。全assetsのコピー／保全／ハッシュ照合があるため、ソースだけの更新でも大きなインストールでは数十分かかります。
+独立したrootless環境で、公式Steamからの新規取得、公式Workshopの8MOD展開、Aquaticaの非公開保存終了→公開A2S待受け→保存終了、同一invocationへのno-op start、restart、設定のみの復旧とworld不変を確認しました。最新Savedコピーでの実際の2-cycle／progress-shape検証、停止希望を保持した適用・3サービス交換・updater引継ぎも確認しています。旧版の30分待機上限に達した適用は不明として保留され、helperの実終了・Saved不変・新規起動なしを確認した後の明示的な所有者復旧で完了しました。現在の適用待機上限は2時間です。その後のソースのみ更新はprogram RO再利用へ変更し、実稼働中の更新→再開→3サービス交換／updater引継ぎを自動完了しました。実測例ではprogramコピー0 bytes、適用3分9秒（旧コピー経路の観測は約33分）、確認開始から完了まで14分56秒でした。ディスク／キャッシュ／worldに依存する一例であり、瞬時の更新を保証しません。ゲーム／MOD変更時の実コピー保全や、Savedコピー・実読込・完全ハッシュ照合は引き続き必要です。
 
 終了競合は、実際のComposeが旧IDを列挙した後のDocker API送信を所有者限定Unix proxyで一時保留し、その間に同一の検証済みimageでserver・Bot・updaterを交換して再び公開待受けさせる試験で再現しました。保留を解除すると、旧IDが消えた後でも安定証人が新しいサービスを終了させ、nativeの実保存終了と現在Savedのafter-snapshot一致を確認しました。これは任意のengine喪失やupdaterのSIGKILLまで含む無条件のno-orphan保証ではありません。
 
-別の稼働中ソース更新では2-cycleと適用が通った後、commit送信後の非公開起動中にホストが再起動しました。そのjobは完了とせず、commit／起動を再送せずに現在Savedと記録を保全しています。このような不明状態を初期化・旧Saved復元で通過させる機能はありません。
+別の稼働中ソース更新では2-cycleと適用が通った後、commit送信後の非公開起動中にホストが再起動しました。そのjobは成功とせず、適用／ローカルcommit受領／前bootの不明起動と実停止を結び、所有者が現在Savedと記録を保全して `owner_closed_interrupted` として終結しました。commit／起動を再送せず、未知のゲーム終了とautomation latchは保持しています。この終結を起動承認や旧Saved復元の代わりには使えません。
 
-Python 3.12／3.14で依存関係を含む276テストを確認しました。Discordは実Gateway接続・指定guildへのアクセス・既存の `/ark` 登録を読み取り確認しましたが、この確認では同期・メッセージ送信・ゲーム操作を行っていません。実メンバーによるslash／確認ボタン、外部参加、完全なゲーム内／MOD内容の正しさ、将来のASEビルドは別の確認対象です。
+Python 3.12／3.14で依存関係を含む302テストを確認しました。Discordは実Gateway接続・指定guildへのアクセス・既存の `/ark` 登録を読み取り確認しましたが、この確認では同期・メッセージ送信・ゲーム操作を行っていません。実メンバーによるslash／確認ボタン、外部参加、ゲーム内／MOD内容は[具体的な受入項目](acceptance.md)で確認し、自動テストの結果と混同しません。完全な任意動作や将来のASEビルドの保証ではありません。

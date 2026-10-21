@@ -18,7 +18,7 @@ from .compose_server import PENDING
 
 
 def asset_files(root):
-    return {k:v for k,v in tree_manifest(root).items() if not k.startswith('ShooterGame/Saved/')}
+    return tree_manifest(root, exclude_saved=True)
 
 
 def validate_certificate(certificate, pending, trial=Path('/validation')):
@@ -77,11 +77,10 @@ def clear_programs(server):
             shutil.rmtree(path) if path.is_dir() and not path.is_symlink() else path.unlink()
 
 
-def apply(root=n.CODE_ROOT):
-    root = Path(root)
+def apply(root=n.CODE_ROOT, *, candidate=Path('/candidate'), certificate_path=Path('/result/qualification.json')):
+    root, candidate = Path(root), Path(candidate)
     pending = n.private_json(root / PENDING)
-    candidate = Path('/candidate')
-    cert = n.private_json(Path('/result/qualification.json'),8*1024**2)
+    cert = n.private_json(certificate_path,8*1024**2)
     if pending.get('phase') not in ('prepared','applying'):
         raise ValueError('A prepared stopped update is required.')
     launch = root / LAUNCH
@@ -91,24 +90,41 @@ def apply(root=n.CODE_ROOT):
     if n.configuration(root)!=pending['configuration']:
         raise ValueError('Production configuration changed after preparation.')
     validate_certificate(cert,pending)
-    if digest_value(asset_files(candidate / 'server')) != cert['assets_digest']:
+    artifact = n.private_json(candidate / 'asset-manifest.json',64*1024**2)
+    mode = artifact.get('asset_mode','staged')
+    if mode not in ('installed','staged'):
+        raise ValueError('Invalid candidate asset mode.')
+    if mode == 'installed' and not os.statvfs(root / 'server').f_flag & os.ST_RDONLY:
+        raise ValueError('Source-only promotion requires a kernel read-only program mount.')
+    source = root / 'server' if mode == 'installed' else candidate / 'server'
+    qualified_assets = asset_files(source)
+    if digest_value(qualified_assets) != cert['assets_digest']:
         raise ValueError('Candidate assets changed after qualification.')
+    if mode == 'installed' and artifact['versions'] != n.private_json(root / 'config/assets.json')['versions']:
+        raise ValueError('Read-only source update may not change installed game/MOD versions.')
     archive = root / 'backups' / ('update-' + pending['job'])
     archive.mkdir(mode=0o700,parents=True,exist_ok=True)
     if pending['phase'] == 'prepared':
-        previous = asset_files(root / 'server')
-        copy_assets(root / 'server',archive / 'previous-server')
-        if previous != asset_files(archive / 'previous-server'):
-            raise ValueError('Previous asset preservation failed.')
+        previous = qualified_assets if mode == 'installed' else asset_files(root / 'server')
+        if mode == 'staged':
+            copy_assets(root / 'server',archive / 'previous-server')
+            if previous != asset_files(archive / 'previous-server'):
+                raise ValueError('Previous asset preservation failed.')
+        # Installed mode has a kernel read-only program mount. Preserve its
+        # manifest in place; no hardlinks, mutable aliases or program writes.
         shutil.copytree(root / 'config',archive / 'previous-config')
-        n.save(archive / 'previous-assets.json',{'files':previous})
+        n.save(archive / 'previous-assets.json',{'files':previous,'asset_mode':mode})
         n.save(archive / 'pending-before-apply.json',pending)
         pending['phase'] = 'applying'
         n.save(root / PENDING,pending)
-    elif asset_files(archive / 'previous-server') != n.private_json(archive / 'previous-assets.json',64*1024**2)['files']:
-        raise ValueError('Explicit recovery requires the complete original asset preservation.')
-    clear_programs(root / 'server')
-    copy_assets(candidate / 'server',root / 'server')
+    else:
+        preserved = n.private_json(archive / 'previous-assets.json',64*1024**2)
+        original = root / 'server' if mode == 'installed' else archive / 'previous-server'
+        if preserved.get('asset_mode','staged') != mode or asset_files(original) != preserved['files']:
+            raise ValueError('Explicit recovery requires the complete original asset preservation.')
+    if mode == 'staged':
+        clear_programs(root / 'server')
+        copy_assets(candidate / 'server',root / 'server')
     if digest_value(asset_files(root / 'server')) != cert['assets_digest']:
         raise ValueError('Promoted asset bytes do not match qualification.')
     policy = n.install_policy(root)
@@ -120,11 +136,13 @@ def apply(root=n.CODE_ROOT):
     n.save(root / TRANSITION,{'schema':1,'purpose':'qualified_update','runtime':runtime,'native_policy':policy,
         'configuration':n.configuration(root),'previous_state':pending['previous_state'],
         'files':pending['files'],'qualification':cert})
-    versions = n.private_json(candidate / 'asset-manifest.json',64*1024**2)['versions']
+    versions = artifact['versions']
     from . import ark_config as c
     n.save(root / 'config/assets.json',{'schema':1,'versions':versions,
         'active_mods':c.load_editable_settings(root)['active_mods'],'source':'qualified_automatic_update'})
     n.save(archive / 'application.json',{'phase':'applied','runtime':runtime,'saved_restored':False,
+                                      'asset_mode':mode,'programs_reused_readonly':mode=='installed',
+                                      'program_bytes_copied':0 if mode=='installed' else None,
                                       'in_game_content_verified':False})
     return runtime
 

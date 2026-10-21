@@ -150,11 +150,14 @@ def check(root, ids):
     return {'build_id': build, 'mods': workshop_details(ids)}
 
 
-def tree_manifest(root):
+def tree_manifest(root, *, exclude_saved=False):
     root = Path(root)
     files = {}
     total = 0
     for parent, dirs, names in os.walk(root, followlinks=False):
+        if exclude_saved and Path(parent) == root / 'ShooterGame':
+            dirs[:] = [name for name in dirs if name != 'Saved']
+            names = [name for name in names if name != 'Saved']
         for name in dirs + names:
             path = Path(parent) / name
             relative = path.relative_to(root).as_posix()

@@ -7,7 +7,7 @@ from . import ark_config as c, ark_shutdown as n
 from .ark_control import exclusive_lock
 from .ark_docker import verify_files
 from .ark_process import ProcessBackend, CONFIG, TRANSITION, QUALIFICATION, LAUNCH, descriptor
-from .compose_setup import INPUT, ACCEPTED, input_digest, configure, validate
+from .compose_setup import INPUT, ACCEPTED, input_digest, configure, validate, authentication
 
 MARKER=Path('config/compose-config.pending.json')
 MANAGED=(Path('config/server.json'),Path('config/compose.json'),Path('config/discord-request.json'),Path('config/installation.json'),ACCEPTED)
@@ -29,7 +29,9 @@ def update(root=n.CODE_ROOT):
     if (root/PENDING).exists() or (root/MARKER).exists():raise ValueError('A pending maintenance operation requires recovery.')
     if not (root/ACCEPTED).exists():
         raise ValueError('First verify setup with the currently accepted bootstrap, before editing it.')
-    value=validate(n.private_json(INPUT,16384))
+    installation=n.private_json(root/'config/installation.json')
+    preserved=authentication(root/n.SAVED) if installation.get('authentication_policy')=='preserved_import' else None
+    value=validate(n.private_json(INPUT,16384),preserved_authentication=preserved)
     # Missing new MODs fail BEFORE any configuration write. Their installation
     # is a separate staged asset operation; this tool never executes installers.
     c.plan_settings(root,value['multipliers']|{'active_mods':value['active_mods']})

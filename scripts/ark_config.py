@@ -218,13 +218,16 @@ def atomic_write(path, data):
     return changed or permissions_changed
 
 
-def apply_config(root, payload):
+def apply_config(root, payload, *, preserve_existing_authentication=False):
     if not isinstance(payload, dict) or set(payload) != {"settings", "password", "admin_password"}:
         raise ConfigError("Expected settings and two separate passwords on standard input.")
     settings = validate_settings(payload["settings"])
+    if type(preserve_existing_authentication) is not bool:
+        raise ConfigError("Authentication preservation must be explicit.")
+    pattern = r"[A-Za-z0-9_-]{1,128}" if preserve_existing_authentication else r"[A-Za-z0-9_-]{12,128}"
     for name in ("password", "admin_password"):
         value = payload[name]
-        if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]{12,128}", value):
+        if not isinstance(value, str) or not re.fullmatch(pattern, value):
             raise ConfigError("New passwords must be 12-128 ASCII letters, digits, underscores or hyphens.")
     if payload["password"] == payload["admin_password"]:
         raise ConfigError("Participant and administrator passwords must be different.")
@@ -232,6 +235,12 @@ def apply_config(root, payload):
     with server_lock(root):
         path = root / INI_PATH
         text, encoding = decode_ini(path.read_bytes()) if path.exists() else ("", "utf-8")
+        if preserve_existing_authentication:
+            validate_ini_credentials(text)
+            parsed = parse_ini(text)
+            current = tuple(_ini_value(parsed, "ServerSettings", key, "") for key in ("ServerPassword", "ServerAdminPassword"))
+            if current != (payload["password"], payload["admin_password"]):
+                raise ConfigError("Preserved authentication must exactly match the existing INI.")
         updated = merge_ini(text, {
             "ServerSettings": {
                 "ServerPassword": payload["password"],

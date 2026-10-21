@@ -27,7 +27,16 @@ def input_digest(value):
     return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()
 
 
-def validate(value):
+def authentication(saved):
+    path = Path(saved) / c.INI_PATH.relative_to(n.SAVED)
+    if not path.exists():return None
+    text = c.decode_ini(path.read_bytes())[0]
+    c.validate_ini_credentials(text)
+    parsed = c.parse_ini(text)
+    return tuple(c._ini_value(parsed,'ServerSettings',key,'') for key in ('ServerPassword','ServerAdminPassword'))
+
+
+def validate(value, *, preserved_authentication=None):
     expected = {'settings', 'password', 'admin_password', 'active_mods', 'multipliers',
                 'discord', 'auto_start', 'auto_stop', 'updates'}
     if not isinstance(value, dict) or set(value) != expected:
@@ -35,9 +44,12 @@ def validate(value):
     c.validate_settings(value['settings'])
     if value['settings']['game_port']!=7777 or value['settings']['query_port']!=27015:
         raise ValueError('Compose internal ports are fixed; change published host ports instead.')
+    preserving = preserved_authentication is not None and (value['password'],value['admin_password']) == preserved_authentication
     for name in ('password', 'admin_password'):
         item = value[name]
-        if not isinstance(item, str) or not re_password(item) or item.upper().startswith(('CHANGE', 'REPLACE')):
+        import re
+        valid = isinstance(item,str) and (bool(re.fullmatch('[A-Za-z0-9_-]{1,128}',item)) if preserving else re_password(item) and not item.upper().startswith(('CHANGE','REPLACE')))
+        if not valid:
             raise ValueError('Set two separate private game passwords before initial setup.')
     if value['password'] == value['admin_password']:
         raise ValueError('Participant and administrator passwords must differ.')
@@ -68,7 +80,9 @@ def re_password(value):
 
 
 def configure(root, value):
-    c.apply_config(root, {k: value[k] for k in ('settings', 'password', 'admin_password')})
+    preserving = authentication(root/n.SAVED) == (value['password'],value['admin_password'])
+    c.apply_config(root, {k: value[k] for k in ('settings', 'password', 'admin_password')},
+                   preserve_existing_authentication=preserving)
     changes = value['multipliers'] | {'active_mods': value['active_mods']}
     plan = c.plan_settings(root, changes)
     c.patch_settings(root, changes, plan['revision'])
@@ -85,7 +99,13 @@ def initialize(root=n.CODE_ROOT, imported=False):
     root = Path(root)
     for directory in ('config', 'logs', 'backups'):
         (root / directory).mkdir(mode=0o700, exist_ok=True)
-    value = validate(n.private_json(INPUT,16384))
+    original_auth = None
+    if (root/BOOTSTRAP).exists():
+        installed = n.private_json(root/'config/installation.json')
+        if installed.get('authentication_policy') == 'preserved_import':original_auth = authentication(root/n.SAVED)
+    elif imported:
+        original_auth = authentication(Path('/import/Saved'))
+    value = validate(n.private_json(INPUT,16384),preserved_authentication=original_auth)
     input_hash = input_digest(value)
     if (root/'config/compose-config.pending.json').exists():
         raise ValueError('Interrupted owner configuration requires explicit recovery.')
@@ -137,7 +157,8 @@ def initialize(root=n.CODE_ROOT, imported=False):
     runtime = bootstrap(root)
     n.save(root / 'config/assets.json', {'schema': 1, 'versions': versions,
                                        'active_mods': value['active_mods'], 'source': 'explicit_import' if imported else 'official_steam'})
-    n.save(root / 'config/installation.json', {'schema': 1, 'input_sha256': input_hash, 'job': job})
+    n.save(root / 'config/installation.json', {'schema': 1, 'input_sha256': input_hash, 'job': job,
+        'authentication_policy':'preserved_import' if original_auth == (value['password'],value['admin_password']) else 'new_password_policy'})
     n.save(root / 'logs/setup' / (job + '.json'), {'phase': 'completed', 'runtime': runtime,
                                                'imported': imported, 'in_game_content_verified': False})
     marker.unlink()

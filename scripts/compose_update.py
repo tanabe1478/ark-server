@@ -18,7 +18,7 @@ import uuid
 
 from . import ark_config as c, ark_shutdown as n
 from .ark_control import ControlError, exclusive_lock
-from .compose_assets import fetch, extract_tar, copy_assets, tree_manifest, asset_bytes
+from .compose_assets import fetch, extract_tar, asset_bytes
 from .compose_engine import ComposeEngine
 from .compose_qualify import digest_value
 from .compose_release import manifest
@@ -29,7 +29,7 @@ import socket
 ACTIVE = Path('logs/updates/current.json')
 SOURCE_STAGE=Path('/stage')
 REQUEST = Path('logs/updates/request.json')
-TERMINAL = {'disabled','no_update','deferred','completed','check_failed','candidate_rejected','candidate_blocked','platform_stopped'}
+TERMINAL = {'disabled','no_update','deferred','completed','check_failed','candidate_rejected','candidate_blocked','platform_stopped','owner_closed_interrupted'}
 
 
 def persist(root,record):
@@ -93,6 +93,12 @@ class Updater:
 
     def mount(self, relative, target, readonly=False):
         return ('staging','jobs/'+self.record['job']+'/'+relative,target,readonly)
+
+    def asset_mount(self):
+        mode=self.record.get('asset_mode','staged')
+        if mode=='installed':return ('game','','/opt/ark/server',True)
+        if mode=='staged':return self.mount('candidate/server','/opt/ark/server',True)
+        raise ValueError('Invalid asset mode.')
 
     def metadata(self, image, role):
         folder = self.folder / ('meta-'+role)
@@ -184,7 +190,7 @@ class Updater:
             shutil.copytree(self.root / n.SAVED,trial / 'Saved')
             shutil.copy2(self.root / 'config/server.json',trial / 'config/server.json')
             verify_files(self.root,pending['files'])
-        mounts = [self.mount('candidate/server','/opt/ark/server',True),
+        mounts = [self.asset_mount(),
                   self.mount('trial/Saved','/opt/ark/server/ShooterGame/Saved')]
         mounts += [self.mount('trial/'+name,'/opt/ark/'+name) for name in ('config','logs','backups')]
         mounts += [self.mount('trial/result','/result')]
@@ -218,7 +224,7 @@ class Updater:
         return True
 
     def apply(self, image, recovering=False):
-        mounts = [('game','','/opt/ark/server',False),('saved','','/opt/ark/server/ShooterGame/Saved',True),
+        mounts = [('game','','/opt/ark/server',self.record.get('asset_mode','staged')=='installed'),('saved','','/opt/ark/server/ShooterGame/Saved',True),
             ('settings','','/opt/ark/config',False),('evidence','','/opt/ark/logs',False),('backups','','/opt/ark/backups',False),
             self.mount('candidate','/candidate',True),self.mount('trial/result','/result',True),self.mount('trial','/validation',True)]
         purpose = 'apply-recovery-'+uuid.uuid4().hex[:8] if recovering else 'application'
@@ -294,7 +300,7 @@ class Updater:
         if previous and previous.get('phase') not in TERMINAL:
             return {'phase':'blocked','reason':'previous_update_outcome_unknown'}
         job=uuid.uuid4().hex
-        self.folder=Path('/stage/jobs')/job;self.folder.mkdir(mode=0o700,parents=True)
+        self.folder=SOURCE_STAGE/'jobs'/job;self.folder.mkdir(mode=0o700,parents=True)
         self.record={'schema':1,'job':job,'phase':'checking','saved_restored':False}
         self.save('checking')
         config=settings(self.root)
@@ -325,17 +331,19 @@ class Updater:
             rejected=self.root/'logs/updates/rejected'/(fingerprint+'.json')
             if rejected.exists() and not force and source is None:
                 self.save('candidate_blocked',candidate=fingerprint);return self.record
-            self.save('staging',candidate=fingerprint)
+            # Source-only (including validate-current) never changes programs.
+            # Qualifiers receive the installed game READ ONLY, not a 24GB copy.
+            asset_mode='staged' if game or changed_mods else 'installed'
+            self.save('staging',candidate=fingerprint,asset_mode=asset_mode)
             images={role:old[role]['Image'] for role in old}
             if upstream:
                 images={role:self.build(upstream['source'],role,('runtime' if role=='server' else 'updater') if role!='bot' else None)
                         for role in ('server','bot','updater')}
                 candidate_metadata=self.metadata(images['server'],'candidate')
                 if candidate_metadata['release']!=upstream['release']:raise ValueError('Built release identity differs.')
-            if force:
+            if asset_mode=='installed':
                 folder=self.folder/'candidate';folder.mkdir(mode=0o700)
-                copy_assets(self.root/'server',folder/'server')
-                n.save(folder/'asset-manifest.json',{'schema':1,'versions':versions,'files':tree_manifest(folder/'server')})
+                n.save(folder/'asset-manifest.json',{'schema':1,'asset_mode':'installed','versions':versions})
             else:
                 self.installer(images['server'],'download',{'operation':'download','install':{
                     'schema':1,'game':game,'mods':changed_mods,'versions':versions}})
@@ -343,7 +351,7 @@ class Updater:
             # discovery. Probe with no Saved mount before native-cycle proof.
             (self.folder/'profile').mkdir(mode=0o700)
             probe=self.engine.run_job(images['server'],job,'native-profile','scripts.compose_profile_probe',[],
-                [self.mount('candidate/server','/opt/ark/server',True),self.mount('profile','/result')],timeout=120)
+                [self.asset_mount(),self.mount('profile','/result')],timeout=120)
             if probe.get('cancelled'):
                 self.save('deferred',reason='platform_shutdown');return self.record
             if probe['exit_code']!=0 or probe['oom_killed']:
@@ -353,7 +361,7 @@ class Updater:
             if memory_available()<config['minimum_free_memory_bytes']:
                 self.save('deferred',reason='insufficient_validation_memory');return self.record
             saved_bytes=sum(value['bytes'] for value in n.inventory(self.root/n.SAVED).values())
-            required_space=asset_bytes(self.root/'server')+12*saved_bytes+4*1024**3
+            required_space=(asset_bytes(self.root/'server') if asset_mode=='staged' else 0)+12*saved_bytes+4*1024**3
             if shutil.disk_usage(self.folder).free<required_space:
                 self.save('deferred',reason='insufficient_preservation_space');return self.record
             if self.external_shutdown:
@@ -405,7 +413,7 @@ class Updater:
             raise ControlError('outcome_unknown')
         attempt=uuid.uuid4().hex
         n.save(self.root/'logs/updates/recoveries'/attempt/'before.json',record)
-        self.record=record;self.folder=Path('/stage/jobs')/job
+        self.record=record;self.folder=SOURCE_STAGE/'jobs'/job
         self.save('owner_recovery',recovery_attempt=attempt)
         server=self.engine.inspect(self.engine.project+'-server-1')
         if pending['phase']=='prepared':

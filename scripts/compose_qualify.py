@@ -21,9 +21,8 @@ def qualify(root=n.CODE_ROOT, result=Path('/result/qualification.json')):
     # No process, controller state, live evidence or stop receipt is imported.
     source = {key: {'bytes': meta['bytes'], 'sha256': n.digest(root / n.SAVED / key)}
               for key, meta in n.inventory(root / n.SAVED).items()}
-    assets = tree_manifest(root / 'server')
-    # Saved is a separate mount; it must not participate in the asset digest.
-    assets = {key: value for key, value in assets.items() if not key.startswith('ShooterGame/Saved/')}
+    # Prune before walking/hashing: Saved is separately captured and qualified.
+    assets = tree_manifest(root / 'server', exclude_saved=True)
     from .compose_integrity import progress,verify_progress
     original_progress=progress(root)
     input_configuration=n.configuration(root)
