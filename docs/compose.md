@@ -219,4 +219,4 @@ docker compose exec updater python3 -m scripts.compose_update validate-source so
 
 別の稼働中ソース更新では2-cycleと適用が通った後、commit送信後の非公開起動中にホストが再起動しました。そのjobは成功とせず、適用／ローカルcommit受領／前bootの不明起動と実停止を結び、所有者が現在Savedと記録を保全して `owner_closed_interrupted` として終結しました。commit／起動を再送せず、未知のゲーム終了とautomation latchは保持しています。この終結を起動承認や旧Saved復元の代わりには使えません。
 
-Python 3.12／3.14で依存関係を含む326テストを確認しました。Discordは実Gateway接続・指定guildへのアクセス・既存の `/ark` 登録を読み取り確認しましたが、この確認では同期・メッセージ送信・ゲーム操作を行っていません。実メンバーによるslash／確認ボタン、外部参加、ゲーム内／MOD内容は[具体的な受入項目](acceptance.md)で確認し、自動テストの結果と混同しません。完全な任意動作や将来のASEビルドの保証ではありません。
+Python 3.12／3.14で依存関係を含む331テストを確認しました。Discordは実Gateway接続・指定guildへのアクセス・既存の `/ark` 登録を読み取り確認しましたが、この確認では同期・メッセージ送信・ゲーム操作を行っていません。実メンバーによるslash／確認ボタン、外部参加、ゲーム内／MOD内容は[具体的な受入項目](acceptance.md)で確認し、自動テストの結果と混同しません。完全な任意動作や将来のASEビルドの保証ではありません。

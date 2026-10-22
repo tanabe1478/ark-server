@@ -245,6 +245,66 @@ class DiscordBotTests(unittest.IsolatedAsyncioTestCase):
             await client.idle_loop()
         self.automation.idle_check.assert_called_once_with();client.notification_channel.assert_awaited_once()
 
+    async def idle_results(self, results, *, send_failure=False):
+        from scripts.discord_bot import build_client
+        cfg = BotConfig(guild_id=GUILD, notification_channel_id=CHANNEL,
+                        shutdown_verified=True, auto_stop_enabled=True)
+        client = build_client(cfg, self.automation)
+        self.addAsyncCleanup(client.close)
+        client.is_ready = lambda: True
+        client.gateway_connected = True
+        channel = SimpleNamespace(send=AsyncMock())
+        if send_failure:
+            channel.send.side_effect = [OSError('private-network-detail'), None]
+        client.notification_channel = AsyncMock(return_value=channel)
+        self.automation.idle_check = Mock(side_effect=results)
+        ticks = 0
+        async def wait_for(awaitable, *, timeout):
+            nonlocal ticks
+            awaitable.close(); ticks += 1
+            if ticks > len(results):
+                return
+            raise asyncio.TimeoutError
+        with patch('scripts.discord_bot.asyncio.wait_for', side_effect=wait_for), patch('builtins.print'):
+            await client.idle_loop()
+        self.assertEqual(self.backend.calls, [])
+        return client, channel
+
+    async def test_unavailable_idle_control_is_labeled_and_reported_once_not_as_failed_stop(self):
+        missing = {'ok': False, 'request_id': None, 'action': None,
+                   'error': {'code': 'service_unavailable'}}
+        client, channel = await self.idle_results([missing, missing])
+        channel.send.assert_awaited_once()
+        text = channel.send.call_args.args[0]
+        self.assertIn('無人確認・自動停止を保留', text)
+        self.assertIn('メンテナンス', text)
+        self.assertNotIn('処理を完了できませんでした', text)
+        self.assertNotIn('停止しました', text)
+        self.assertTrue(client.control_unavailable_notified)
+
+    async def test_idle_outage_notice_resets_after_successful_control_response(self):
+        missing = {'ok': False, 'request_id': None, 'action': None,
+                   'error': {'code': 'service_unavailable'}}
+        _, channel = await self.idle_results([missing, {'ok': True, 'data': {'changed': False}}, missing])
+        self.assertEqual(channel.send.await_count, 2)
+
+    async def test_uncertain_transmission_or_server_side_failure_is_not_suppressed(self):
+        for result in ({'ok': False, 'request_id': None, 'action': None,
+                        'error': {'code': 'outcome_unknown'}},
+                       {'ok': False, 'request_id': 'accepted-idle-request', 'action': 'stop.idle',
+                        'error': {'code': 'service_unavailable'}}):
+            with self.subTest(code=result['error']['code']):
+                client, channel = await self.idle_results([result, result])
+                self.assertEqual(channel.send.await_count, 2)
+                self.assertFalse(client.control_unavailable_notified)
+
+    async def test_failed_outage_notice_is_not_marked_delivered(self):
+        missing = {'ok': False, 'request_id': None, 'action': None,
+                   'error': {'code': 'service_unavailable'}}
+        client, channel = await self.idle_results([missing, missing], send_failure=True)
+        self.assertEqual(channel.send.await_count, 2)
+        self.assertTrue(client.control_unavailable_notified)
+
     async def test_shutdown_drains_accepted_jobs_without_cancellation(self):
         accepted = asyncio.Event()
         finish = asyncio.Event()

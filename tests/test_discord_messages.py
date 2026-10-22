@@ -86,6 +86,15 @@ class ParticipantMessagesTests(unittest.TestCase):
             self.assertNotIn('private-raw-token', text)
             self.assertNotIn('参加受付中', text)
 
+    def test_unavailable_control_explains_maintenance_without_claiming_game_state(self):
+        result = {'ok': False, 'error': {'code': 'service_unavailable'}}
+        for text in (failure_text(result), format_status(result, self.join)):
+            self.assertIn('管理機能に接続できない', text)
+            self.assertIn('メンテナンス', text)
+            self.assertNotIn('処理を完了できませんでした', text)
+            self.assertNotIn('停止しました', text)
+            self.assertNotIn('参加受付中', text)
+
     def test_idle_stop_is_actionable_without_diagnostic_codes(self):
         text = stopped_text(self.result)
         self.assertIn('停止しました', text)

@@ -42,6 +42,7 @@ def build_client(config, automation, *, join=None):
             self.jobs = set()
             self.stop_event = asyncio.Event()
             self.idle_task = None
+            self.control_unavailable_notified = False
             self.mutation = asyncio.Lock()
 
         async def setup_hook(self):
@@ -104,6 +105,8 @@ def build_client(config, automation, *, join=None):
                         result = await asyncio.to_thread(adapter.prepare, self.context(interaction), action, interaction_id=str(interaction.id))
                     else:
                         result = await asyncio.to_thread(adapter.confirm, self.context(interaction), token)
+                    if result.get('ok') is True:
+                        self.control_unavailable_notified = False
                     info = await connection_info(force=result.get('data', {}).get('changed') is True) if result.get('ok') is True else JoinInfo()
                     await self.notify(interaction, ready_text(result, action, info))
             except Exception:
@@ -147,13 +150,27 @@ def build_client(config, automation, *, join=None):
                 except Exception:
                     print('Idle check failed; no control retry was attempted.', flush=True)
                     continue
-                if result['ok'] and not result['data'].get('changed'):
-                    print('Idle check: no stop performed.', flush=True)
-                    continue
-                text = stopped_text(result)
+                # Missing IPC before transmission is not a failed game stop. Report
+                # its purpose once per outage; never suppress uncertain sent requests.
+                unavailable = (not result['ok'] and result.get('error', {}).get('code') == 'service_unavailable'
+                               and result.get('action') is None and result.get('request_id') is None)
+                if unavailable:
+                    if self.control_unavailable_notified:
+                        print('Idle check paused: control unavailable; outage already reported.', flush=True)
+                        continue
+                    text = 'ARKの管理機能に接続できないため、無人確認・自動停止を保留しています。メンテナンス中は完了をお待ちください。それ以外の場合は管理者に連絡してください。'
+                else:
+                    if result['ok']:
+                        self.control_unavailable_notified = False
+                    if result['ok'] and not result['data'].get('changed'):
+                        print('Idle check: no stop performed.', flush=True)
+                        continue
+                    text = stopped_text(result)
                 try:
                     channel = await self.notification_channel()
                     await channel.send(text, allowed_mentions=discord.AllowedMentions.none())
+                    if unavailable:
+                        self.control_unavailable_notified = True
                 except Exception:
                     print('Auto-stop notification failed; no control retry was attempted.', flush=True)
 
@@ -182,6 +199,8 @@ def build_client(config, automation, *, join=None):
         try:
             await interaction.response.defer(thinking=True)
             result = await asyncio.to_thread(automation.execute, 'status')
+            if result.get('ok') is True:
+                client.control_unavailable_notified = False
             await interaction.edit_original_response(content=format_status(result, await connection_info()), allowed_mentions=discord.AllowedMentions.none())
         finally:
             client.jobs.discard(task)
