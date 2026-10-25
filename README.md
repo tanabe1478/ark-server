@@ -86,6 +86,10 @@ docker compose logs -f server
 
 `auto_start: false` ならゲームは起動せず、コントローラーとBotだけが利用可能になります。最初の `/ark start` 時に非公開の保存終了検証を行います。
 
+### 4. ホスト再起動後も自動で戻す（推奨）
+
+Composeのserviceはホスト再起動後に自動では戻りません。受入確認が済んだら、`.env` でproject名とsocketを固定し、`deploy/docker/ark-compose.service.in` からsystemd user unitを配置します。手順は[ホスト起動時の自動起動](docs/compose.md#ホスト起動時の自動起動)を参照してください。
+
 既存データは通常起動で上書き初期化しません。[明示import手順](docs/compose.md#既存データのimport)を使ってください。importの既存認証は元INIとの一致を確認して保持し、新規用の長さ制約を理由にパスワードを黙って変更しません。
 
 ## 日常の操作
@@ -120,6 +124,21 @@ docker compose down
 ```
 
 通常の終了猶予は25分です。ゲームの保存終了と受理済み処理の記録を待ちます。`kill`、極端に短いtimeout、`down -v`、volume／imageの一括pruneを通常運用に使わないでください。
+
+> **稼働中の構成と同じディレクトリ・project名・Docker接続先で操作してください。** volume名はproject名で決まります。別のcheckoutや別のproject名で `docker compose up -d` すると、既存のワールドを使わない空のサーバーを新しく作って起動します。
+
+### PCを再起動したとき
+
+[自動起動のunit](docs/compose.md#ホスト起動時の自動起動)を設定済みなら、user managerの起動時にBot・コントローラーが戻ります。
+
+1. 運用ユーザーでログインする（lingerを有効にしていない場合は必須）。ログアウトでも止まります。画面ロック・モニターの電源オフは影響しません。
+2. `systemctl --user status ark-compose.service` でunitが成功していることを確認する。
+3. `docker compose run --rm --no-deps manager status` または `/ark status` で状態を確認する。
+4. 無人停止・`manager stop` の後に再起動した場合、ゲームは停止したままです。遊ぶときは `/ark start` で起動します。
+
+`phase: stopped_with_warning` と `last_shutdown_warning: expected_native_abort` は、保存終了を確認した既知のSIGABRT停止です。通常の停止状態なので、記録の削除や `reset-failed` で消さないでください。PCの自動サスペンドはBotも止めるため、無効のままにしてください。
+
+本番固有のパス・project名・接続先は、Git対象外の `*.local.md`（例：`OPERATIONS.local.md`）に手元で記録しておくと、別の担当者やセッションに引き継げます。
 
 ## 自動更新
 

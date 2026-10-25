@@ -45,6 +45,43 @@ docker compose up -d
 
 同じprojectの稼働希望状態はvolumeに保存します。`auto_start` は初回値で、`manager stop`／無人停止後に `up -d` しただけではゲームを再開しません。
 
+## ホスト起動時の自動起動
+
+`platform`／`server` は `restart: "no"` です。ホストやengineを再起動すると、**`docker compose up -d` を再度実行するまでBotもコントローラーも戻りません**。常時運用では、初回の `docker compose up -d` と受入確認が済んでからsystemd user unitを配置します。
+
+接続先とproject名は、リポジトリ直下の `.env`（Git対象外）に固定します。秘密値は書きません。
+
+```bash
+# .env の例（値は環境に合わせる）
+COMPOSE_PROJECT_NAME=ark
+ARK_DOCKER_SOCKET=/run/user/1000/docker.sock
+ARK_GAME_PORT=7777
+ARK_GAME_PORT_PLUS_ONE=7778
+ARK_QUERY_PORT=27015
+```
+
+`COMPOSE_PROJECT_NAME` は既存volumeの名前を決めます。稼働中の値から変えないでください。unitは端末の `DOCKER_HOST`・`COMPOSE_PROJECT_NAME` を引き継がず、`.env` とテンプレートに書いたsocketだけを使います。
+
+```bash
+export ARK_DOCKER_SOCKET="$XDG_RUNTIME_DIR/docker.sock"   # 専用engineならそのsocket
+ENGINE_UNIT=docker.service                                # 専用engineなら ark-docker.service
+mkdir -p ~/.config/systemd/user
+( set -o noclobber
+  sed -e "s|@ROOT@|$PWD|g" -e "s|@ENGINE_UNIT@|$ENGINE_UNIT|g" -e "s|@DOCKER_SOCKET@|$ARK_DOCKER_SOCKET|g" \
+      deploy/docker/ark-compose.service.in > ~/.config/systemd/user/ark-compose.service )
+grep -n '@' ~/.config/systemd/user/ark-compose.service || echo 'placeholders: ok'
+systemd-analyze --user verify ark-compose.service
+systemctl --user daemon-reload
+systemctl --user enable ark-compose.service
+```
+
+`noclobber` により、同名unitがあれば上書きせず失敗します。既存unitは中身を確認し、手で統合してください。**同じprojectを複数のunitから起動しないでください。** `enable` だけでは今の構成に触れません。次回のuser manager起動時から有効です。
+
+- `ExecStart` は `up -d --no-build` です。build・pull・volume削除はしません。イメージは初回 `up -d` かupdaterが用意したものを使います。
+- `ExecStop` は `-v` なしの `compose down` で、各serviceの25分の保存終了猶予を待ちます。
+- 稼働希望状態はvolume側にあります。`manager stop` や無人停止の後なら、ホストを再起動してもゲームは停止したままで、Botとコントローラーだけが戻ります。
+- user managerは、ログインするかlingerを有効にした場合にだけ起動します。無人のPCで再起動後に戻したい場合は、所有者が `loginctl enable-linger "$USER"` を選択してください。このプロジェクトはlingerを変更しません。PCの電源投入・スリープ解除・停電復旧は対象外です。
+
 ## 既存データのimport
 
 **停止して保存終了を確認したデータの独立コピー**を準備します。稼働中Savedの無保護コピーや、過去の移行パッケージを新しい進行へ上書きする操作ではありません。

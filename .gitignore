@@ -39,6 +39,9 @@ __pycache__/
 *.sqlite3-shm
 *.sqlite3-wal
 
+# Machine-specific runbooks (production paths, project names)
+/*.local.md
+
 *.retry
 *.partial
 *.tar.gz

@@ -1,0 +1,20 @@
+[Unit]
+Description=ARK rootless Compose platform (start at user-manager boot)
+Requires=@ENGINE_UNIT@
+After=@ENGINE_UNIT@
+
+[Service]
+# Brings up the already-built project; never builds, pulls or removes volumes.
+# The desired game state (auto_start / manager stop / idle stop) stays in the settings volume.
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=@ROOT@
+UnsetEnvironment=DOCKER_CONTEXT DOCKER_HOST COMPOSE_FILE COMPOSE_PROJECT_NAME
+ExecStart=/usr/bin/docker --host unix://@DOCKER_SOCKET@ compose up -d --no-build
+ExecStop=/usr/bin/docker --host unix://@DOCKER_SOCKET@ compose down
+TimeoutStartSec=1800
+TimeoutStopSec=1800
+Restart=no
+
+[Install]
+WantedBy=default.target

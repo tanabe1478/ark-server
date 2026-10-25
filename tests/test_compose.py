@@ -658,4 +658,18 @@ class LifecycleTests(FilesFixture):
         record,engine=self.handoff(shutdown=True);self.assertEqual(record['phase'],'platform_stopped');engine.replace.assert_not_called()
 
 
+
+class HostUnitTests(unittest.TestCase):
+    def test_boot_unit_only_brings_up_built_project_and_keeps_volumes(self):
+        text=(ROOT/'deploy/docker/ark-compose.service.in').read_text()
+        rendered=text.replace('@ROOT@','/srv/ark').replace('@ENGINE_UNIT@','docker.service').replace('@DOCKER_SOCKET@','/run/user/1000/docker.sock')
+        self.assertNotIn('@',rendered)
+        lines=dict(line.split('=',1) for line in rendered.splitlines() if '=' in line and not line.startswith('#'))
+        self.assertEqual(lines['ExecStart'],'/usr/bin/docker --host unix:///run/user/1000/docker.sock compose up -d --no-build')
+        self.assertEqual(lines['ExecStop'],'/usr/bin/docker --host unix:///run/user/1000/docker.sock compose down')
+        self.assertEqual(lines['Restart'],'no')
+        self.assertIn('COMPOSE_PROJECT_NAME',lines['UnsetEnvironment'].split())
+        self.assertNotIn('deploy/docker/ark-compose.service.in',manifest(ROOT)['files'])  # Docs/templates never trigger a rebuild.
+
+
 if __name__=='__main__':unittest.main()
