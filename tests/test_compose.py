@@ -672,4 +672,82 @@ class HostUnitTests(unittest.TestCase):
         self.assertNotIn('deploy/docker/ark-compose.service.in',manifest(ROOT)['files'])  # Docs/templates never trigger a rebuild.
 
 
+class MapSwitchTests(FilesFixture):
+    def setUp(self):
+        super().setUp()
+        from scripts import compose_map,compose_setup
+        self.m=compose_map
+        value=json.loads((ROOT/'examples/compose-bootstrap.example.json').read_bytes())
+        value.update(password='EXAMPLE_PARTICIPANT_123',admin_password='EXAMPLE_ADMINISTRATOR_456')
+        value['discord']={'guild_id':'555555555555555555','notification_channel_id':'666666666666666666'}
+        value['settings']['map']='Aquatica'
+        self.accepted=value
+        n.save(self.root/compose_setup.ACCEPTED,value)
+        n.save(self.root/'config/installation.json',{'schema':1,'input_sha256':'old','authentication_policy':'new_password_policy'})
+        compose_setup.configure(self.root,value)
+        for name in ('Aquatica','Genesis'):self.file(str(compose_map.CONTENT/compose_map.MAPS[name]),b'umap')
+        self.world=self.file(str(n.SAVED/'SavedArks/Aquatica.ark'),b'w'*10000)
+        self.file(str(n.SAVED/'SavedArks/1.arkprofile'),b'p'*100)
+        self.mod=self.file(str(n.SAVED/'SaveGames/ModDinoTracker.sav'),b'm')
+        self.input=self.root/'bootstrap.json'
+        backend=Mock();backend.state.return_value={'MainPID':0,'ActiveState':'failed','InvocationID':'a'*32}
+        for target,value_ in ((self.m,'INPUT'),):self.enterContext(patch.object(target,value_,self.input))
+        self.enterContext(patch.object(self.m,'ProcessBackend',return_value=backend))
+        self.enterContext(patch.object(self.m,'descriptor',return_value={'deployment_id':'d'}))
+        self.enterContext(patch.object(self.m.n,'policy',return_value={'native_points':{}}))
+        self.backend=backend
+
+    def request(self,**settings):
+        value=copy.deepcopy(self.accepted);value['settings'].update(settings);n.save(self.input,value)
+
+    def test_delete_starts_a_fresh_world_and_keeps_mod_data_and_config(self):
+        self.request(map='Genesis')
+        result=self.m.switch('Genesis','delete',self.root)
+        self.assertEqual((result['from'],result['to'],result['world_backup']),('Aquatica','Genesis',None))
+        self.assertEqual(c.load_settings(self.root)['map'],'Genesis')
+        self.assertEqual(list((self.root/n.SAVED).rglob('*.ark*')),[])
+        self.assertTrue(self.mod.exists());self.assertTrue((self.root/c.INI_PATH).exists())
+        folder=self.root/result['snapshot']
+        self.assertFalse((folder/'before').exists())  # Delete keeps no world copy.
+        transition=n.private_json(self.root/p.TRANSITION)
+        self.assertEqual(transition['purpose'],'owner_configuration');self.assertTrue(transition['explicit_owner_confirmation'])
+        self.assertEqual(set(transition['files']),set(n.inventory(self.root/n.SAVED)))
+        self.assertEqual(transition['configuration'],n.configuration(self.root))
+        self.assertIn('invalidated_by_owner_configuration',n.private_json(self.root/p.QUALIFICATION))
+        self.assertFalse((self.root/self.m.MARKER).exists())
+        self.assertEqual(n.private_json(self.root/'config/installation.json')['input_sha256'],
+                         __import__('scripts.compose_setup',fromlist=['x']).input_digest(n.private_json(self.input)))
+        self.backend.shutdown_guard.return_value.verify_startable.assert_called_once()
+
+    def test_backup_preserves_the_previous_world_before_deleting(self):
+        self.request(map='Genesis')
+        result=self.m.switch('Genesis','backup',self.root)
+        saved=self.root/result['world_backup']/'Saved'
+        self.assertEqual((saved/'SavedArks/Aquatica.ark').read_bytes(),b'w'*10000)
+        self.assertTrue((saved/'SavedArks/1.arkprofile').exists());self.assertFalse(self.world.exists())
+
+    def test_refusals_change_nothing(self):
+        cases=((dict(map='Genesis',session_name='Other'),'Genesis','delete','Only settings.map'),
+               (dict(map='Aquatica'),'Aquatica','delete','already'),
+               (dict(map='Genesis'),'Narnia','delete','Unknown map'),
+               (dict(map='Gen2'),'Gen2','delete','not installed'),
+               (dict(map='Aquatica'),'Genesis','delete','settings.map'),
+               (dict(map='Genesis'),'Genesis','keep','--data'))
+        for settings,target,data,message in cases:
+            with self.subTest(message):
+                self.request(**settings)
+                with self.assertRaisesRegex(ValueError,message):self.m.switch(target,data,self.root)
+                self.assertTrue(self.world.exists());self.assertEqual(c.load_settings(self.root)['map'],'Aquatica')
+        self.backend.shutdown_guard.return_value.verify_startable.assert_not_called()
+
+    def test_unstartable_stop_record_blocks_before_any_deletion(self):
+        self.request(map='Genesis')
+        self.backend.shutdown_guard.return_value.verify_startable.side_effect=n.ShutdownError('Saved files changed after stopping.')
+        with self.assertRaises(n.ShutdownError):self.m.switch('Genesis','delete',self.root)
+        self.assertTrue(self.world.exists());self.assertFalse((self.root/self.m.MARKER).exists())
+
+    def test_map_switch_is_release_code(self):
+        self.assertIn('scripts/compose_map.py',manifest(ROOT)['files'])
+
+
 if __name__=='__main__':unittest.main()

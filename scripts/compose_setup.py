@@ -172,13 +172,19 @@ def main():
     mode.add_argument('--import-data', action='store_true')
     mode.add_argument('--configure-existing', action='store_true')
     mode.add_argument('--restore-configuration', action='store_true')
+    mode.add_argument('--switch-map', metavar='MAP')
+    parser.add_argument('--data', choices=('backup', 'delete'), help='With --switch-map: preserve or delete the previous world')
     parser.add_argument('--confirm',action='store_true')
     args = parser.parse_args()
     os.umask(0o077)
     try:
         from .compose_server import rootless
         rootless()
-        if args.configure_existing or args.restore_configuration:
+        if args.switch_map:
+            if not args.confirm or not args.data:raise ValueError('Explicit owner confirmation and --data are required.')
+            from . import compose_map
+            result=compose_map.switch(args.switch_map,args.data)
+        elif args.configure_existing or args.restore_configuration:
             if not args.confirm:raise ValueError('Explicit owner confirmation is required.')
             from . import compose_configure
             result=compose_configure.restore() if args.restore_configuration else compose_configure.update()
@@ -186,7 +192,10 @@ def main():
             result=initialize(imported=args.import_data)
         print(json.dumps(result))
         return 0
-    except Exception:
+    except Exception as error:
+        if args.switch_map and type(error) is ValueError:
+            # Map switch checks raise fixed messages without paths or secrets.
+            print('Map switch refused: '+str(error), file=sys.stderr)
         print('Compose setup failed or is incomplete. Inspect private volumes; never delete progress to retry.', file=sys.stderr)
         return 78
 

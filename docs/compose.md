@@ -135,6 +135,25 @@ docker compose up -d
 
 マップやMOD構成の変更は通常のバージョン更新とは別です。未配置の新規MODは、設定変更前に拒否します。このコマンドはMOD installerを実行したり、未知のassetsを無検証で本番へ追加したりしません。初期配置／別ステージで準備したassetsの明示importを使い、ゲーム内互換性も確認してください。
 
+### マップの切り替え
+
+ゲーム本体に含まれる公式マップ（`TheIsland` `TheCenter` `ScorchedEarth_P` `Ragnarok` `Aberration_P` `Extinction` `Valguero_P` `Genesis` `CrystalIsles` `Gen2` `LostIsland` `Fjordur` `Aquatica`）へ、MOD・倍率・パスワード・Discord設定はそのままで新しいワールドとして切り替えます。前のワールド・キャラクター・トライブ（`Saved/SavedArks`）は、次のどちらかを選びます。
+
+- `--data backup`: `backups/compose-map-<id>/before/` に退避してから消す。あとで戻すときの元になる
+- `--data delete`: 退避せずに消す。元に戻せない
+
+設定・INI・MODのデータ（`SaveGames`）・ログは残ります。手順は設定変更と同じで、bootstrapでは `settings.map` だけを変えます（ほかの項目も変わっていると拒否します）。
+
+```bash
+docker compose run --rm --no-deps manager stop   # 動いていれば
+docker compose down                              # -v なし
+${EDITOR:-nano} config/compose/bootstrap.json    # settings.map だけ変える
+docker compose run --rm --no-deps setup --switch-map Genesis --data delete --confirm
+docker compose up -d --no-build
+```
+
+更新ジョブの途中・保守の中断が残っている・直前の停止を検証できないときは、何も消さずに拒否します。拒否されたら bootstrap の `settings.map` を元に戻してから `up` してください（戻さないと setup が入力の変更を検出して起動を止めます）。最初の起動では、新しいマップで非公開の保存・終了を確認してから公開します。
+
 ### 設定保守の中断
 
 `config/compose-config.pending.json` が残ると起動を保留します。明示的な設定復旧：
