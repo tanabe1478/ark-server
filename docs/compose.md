@@ -135,6 +135,20 @@ docker compose up -d
 
 マップやMOD構成の変更は通常のバージョン更新とは別です。未配置の新規MODは、設定変更前に拒否します。このコマンドはMOD installerを実行したり、未知のassetsを無検証で本番へ追加したりしません。初期配置／別ステージで準備したassetsの明示importを使い、ゲーム内互換性も確認してください。
 
+### オン／オフの設定（options）
+
+bootstrap に任意の `options` を書くと、決まったオン／オフ項目を管理します。書かない項目は既存INIの値をそのまま残します。
+
+| キー | INI | 内容 |
+|---|---|---|
+| `show_map_player_location` | `ShowMapPlayerLocation` | 地図に自分の位置と向きを表示 |
+
+```json
+"options": {"show_map_player_location": true}
+```
+
+適用は上の設定変更の手順（`setup --configure-existing --confirm`）です。
+
 ### マップの切り替え
 
 ゲーム本体に含まれる公式マップ（`TheIsland` `TheCenter` `ScorchedEarth_P` `Ragnarok` `Aberration_P` `Extinction` `Valguero_P` `Genesis` `CrystalIsles` `Gen2` `LostIsland` `Fjordur` `Aquatica`）へ、MOD・倍率・パスワード・Discord設定はそのままで新しいワールドとして切り替えます。前のワールド・キャラクター・トライブ（`Saved/SavedArks`）は、次のどちらかを選びます。

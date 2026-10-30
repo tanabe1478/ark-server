@@ -750,4 +750,47 @@ class MapSwitchTests(FilesFixture):
         self.assertIn('scripts/compose_map.py',manifest(ROOT)['files'])
 
 
+class OptionTests(FilesFixture):
+    def setUp(self):
+        super().setUp()
+        from scripts import compose_setup
+        self.s=compose_setup
+        value=json.loads((ROOT/'examples/compose-bootstrap.example.json').read_bytes())
+        value.update(password='EXAMPLE_PARTICIPANT_123',admin_password='EXAMPLE_ADMINISTRATOR_456')
+        value['discord']={'guild_id':'555555555555555555','notification_channel_id':'666666666666666666'}
+        self.value=value
+        compose_setup.configure(self.root,compose_setup.validate(value))
+        path=self.root/c.INI_PATH
+        path.write_text(c.merge_ini(path.read_text(),{'ServerSettings':{'ShowMapPlayerLocation':'False'}}))
+
+    def ini(self):
+        return (self.root/c.INI_PATH).read_text()
+
+    def test_absent_options_keep_the_existing_ini_value_and_digest(self):
+        self.s.configure(self.root,self.s.validate(self.value))
+        self.assertIn('ShowMapPlayerLocation=False',self.ini())
+        self.assertFalse(c.load_editable_settings(self.root)['show_map_player_location'])
+        self.assertNotIn('options',self.value)  # Existing bootstraps keep their accepted digest.
+
+    def test_option_writes_true_and_reads_back(self):
+        value=self.s.validate(self.value|{'options':{'show_map_player_location':True}})
+        self.s.configure(self.root,value)
+        self.assertIn('ShowMapPlayerLocation=True',self.ini())
+        self.assertTrue(c.load_editable_settings(self.root)['show_map_player_location'])
+
+    def test_invalid_options_are_refused(self):
+        for options in ({'show_map_player_location':'yes'},{'unknown':True},[]):
+            with self.subTest(options),self.assertRaises(ValueError):
+                self.s.validate(self.value|{'options':options})
+        (self.root/c.INI_PATH).write_text(self.ini().replace('ShowMapPlayerLocation=False','ShowMapPlayerLocation=maybe'))
+        with self.assertRaises(c.ConfigError):c.load_editable_settings(self.root)
+
+    def test_game_rewriting_the_option_blocks_public_readiness(self):
+        self.s.configure(self.root,self.s.validate(self.value|{'options':{'show_map_player_location':True}}))
+        required=integrity.capture(self.root)
+        self.assertTrue(required['numeric']['show_map_player_location'])
+        (self.root/c.INI_PATH).write_text(self.ini().replace('ShowMapPlayerLocation=True','ShowMapPlayerLocation=False'))
+        with self.assertRaisesRegex(ValueError,'managed'):integrity.verify(self.root,required)
+
+
 if __name__=='__main__':unittest.main()

@@ -38,7 +38,11 @@ RULES = {
     "egg_hatch_speed": {"label": "孵化速度", "ini_key": "EggHatchSpeedMultiplier", "file": "Game.ini", "section": "/script/shootergame.shootergamemode", "min": 0.1, "max": 100, "default": 1.0, "hint": "大きいほど卵が速く孵ります"},
     "baby_mature_speed": {"label": "成長速度", "ini_key": "BabyMatureSpeedMultiplier", "file": "Game.ini", "section": "/script/shootergame.shootergamemode", "min": 0.1, "max": 1000, "default": 1.0, "hint": "大きいほど子どもが速く成長します。刷り込み間隔は別設定です"},
 }
-EDITABLE_SETTINGS = frozenset(("session_name", "max_players", "active_mods", *RULES))
+# Fixed ASE on/off keys, written as True/False.
+TOGGLES = {
+    "show_map_player_location": {"label": "地図に自分の位置を表示", "ini_key": "ShowMapPlayerLocation", "file": "GameUserSettings.ini", "section": "ServerSettings", "default": False, "hint": "オンにすると地図に自分の位置と向きが出ます"},
+}
+EDITABLE_SETTINGS = frozenset(("session_name", "max_players", "active_mods", *RULES, *TOGGLES))
 MOD_ID = r"[1-9][0-9]{0,19}"
 SNAPSHOT_ID = r"config-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{32}"
 
@@ -265,7 +269,7 @@ def settings_revision(ini, runtime, game=None):
 
 
 def validate_editable_settings(settings):
-    expected = set(DEFAULTS) | set(RULES) | {"active_mods"}
+    expected = set(DEFAULTS) | set(RULES) | set(TOGGLES) | {"active_mods"}
     if not isinstance(settings, dict) or set(settings) != expected:
         raise ConfigError("Invalid editable settings.")
     base = validate_settings({key: settings[key] for key in DEFAULTS})
@@ -274,6 +278,10 @@ def validate_editable_settings(settings):
         if type(value) not in (int, float) or not rule["min"] <= value <= rule["max"] or not math.isfinite(value):
             raise ConfigError("A game multiplier is outside its supported range.")
         base[key] = float(value)
+    for key in TOGGLES:
+        if type(settings[key]) is not bool:
+            raise ConfigError("An on/off setting must be true or false.")
+        base[key] = settings[key]
     ids = settings["active_mods"]
     if not isinstance(ids, list) or len(ids) > 32 or any(not isinstance(item, str) or not re.fullmatch(MOD_ID, item) or int(item) > 2**64-1 for item in ids) or len(set(ids)) != len(ids):
         raise ConfigError("Use up to 32 unique numeric Workshop IDs in load order.")
@@ -297,6 +305,11 @@ def editable_from_bytes(ini, runtime, game):
             base[key] = float(_ini_value(parsed[rule["file"]], rule["section"], rule["ini_key"], str(rule["default"])))
         except (ValueError, OverflowError):
             raise ConfigError("A managed game multiplier is invalid.") from None
+    for key, rule in TOGGLES.items():
+        value = _ini_value(parsed[rule["file"]], rule["section"], rule["ini_key"], str(rule["default"])).strip().casefold()
+        if value not in ("true", "false"):
+            raise ConfigError("A managed on/off setting is invalid.")
+        base[key] = value == "true"
     mods = _ini_value(parsed["GameUserSettings.ini"], "ServerSettings", "ActiveMods", "").strip()
     base["active_mods"] = [] if mods in ("", "0") else [item.strip() for item in mods.split(",")]
     return validate_editable_settings(base)
@@ -343,6 +356,10 @@ def _settings_plan(root, changes):
             rule = RULES[key]
             destination = game_managed if rule["file"] == "Game.ini" else managed
             destination.setdefault(rule["section"], {})[rule["ini_key"]] = format(after[key], ".15g")
+        elif key in TOGGLES:
+            rule = TOGGLES[key]
+            destination = game_managed if rule["file"] == "Game.ini" else managed
+            destination.setdefault(rule["section"], {})[rule["ini_key"]] = "True" if after[key] else "False"
         elif key == "active_mods":
             managed.setdefault("ServerSettings", {})["ActiveMods"] = ",".join(after[key])
     def merged(source, fields):

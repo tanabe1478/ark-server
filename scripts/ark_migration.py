@@ -268,7 +268,7 @@ def inspect(root, package_path, *, budget=None, recovery_snapshot=None, service_
         old, credential_signature = recovery_credentials(root, recovery_snapshot, budget)
         # Invalid current credentials must not become silently trusted. Report
         # non-secret runtime fields and explicitly unknown INI-derived values.
-        before = {key: '未取得' for key in (*config.DEFAULTS, *config.RULES, 'active_mods')}
+        before = {key: '未取得' for key in (*config.DEFAULTS, *config.RULES, *config.TOGGLES, 'active_mods')}
         before.update(config.load_settings(root))
     source_ini = recovery._read(safe_path(package / config.INI_PATH))
     if hashlib.sha256(source_ini).hexdigest() != hashes[config.INI_PATH.as_posix()]:

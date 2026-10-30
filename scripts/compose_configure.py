@@ -34,7 +34,7 @@ def update(root=n.CODE_ROOT):
     value=validate(n.private_json(INPUT,16384),preserved_authentication=preserved)
     # Missing new MODs fail BEFORE any configuration write. Their installation
     # is a separate staged asset operation; this tool never executes installers.
-    c.plan_settings(root,value['multipliers']|{'active_mods':value['active_mods']})
+    c.plan_settings(root,value['multipliers']|value.get('options',{})|{'active_mods':value['active_mods']})
     with exclusive_lock(root/'.controller.lock'),exclusive_lock(root/'.control.lock'),c.server_lock(root):
         backend=ProcessBackend(root)
         try:

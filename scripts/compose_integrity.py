@@ -30,14 +30,14 @@ def entries(path):
 
 
 def unmanaged(values, filename):
-    managed={(rule['section'].casefold(),rule['ini_key'].casefold()) for rule in c.RULES.values() if rule['file']==filename}
+    managed={(rule['section'].casefold(),rule['ini_key'].casefold()) for rule in (*c.RULES.values(),*c.TOGGLES.values()) if rule['file']==filename}
     return Counter({item:count for item,count in values.items() if item[:2] not in managed})
 
 
 def capture(root):
     numeric=c.load_editable_settings(root)
     return {'entries':{str(path):unmanaged(entries(root/path),path.name) for path in (c.INI_PATH,c.GAME_INI_PATH)},
-            'numeric':{name:numeric[name] for name in c.RULES}}
+            'numeric':{name:numeric[name] for name in (*c.RULES,*c.TOGGLES)}}
 
 
 def progress(root):

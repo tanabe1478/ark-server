@@ -39,8 +39,11 @@ def authentication(saved):
 def validate(value, *, preserved_authentication=None):
     expected = {'settings', 'password', 'admin_password', 'active_mods', 'multipliers',
                 'discord', 'auto_start', 'auto_stop', 'updates'}
-    if not isinstance(value, dict) or set(value) != expected:
+    # `options` is optional so existing bootstraps keep their digest; absent keys stay untouched in the INI.
+    if not isinstance(value, dict) or not expected <= set(value) <= expected | {'options'}:
         raise ValueError('Bootstrap must contain exactly the documented fields.')
+    if not isinstance(value.get('options', {}), dict) or set(value.get('options', {})) - set(c.TOGGLES):
+        raise ValueError('Invalid on/off option fields.')
     c.validate_settings(value['settings'])
     if value['settings']['game_port']!=7777 or value['settings']['query_port']!=27015:
         raise ValueError('Compose internal ports are fixed; change published host ports instead.')
@@ -55,7 +58,8 @@ def validate(value, *, preserved_authentication=None):
         raise ValueError('Participant and administrator passwords must differ.')
     if not isinstance(value['multipliers'], dict) or set(value['multipliers']) - set(c.RULES):
         raise ValueError('Invalid multiplier fields.')
-    edits = value['settings'] | {k: r['default'] for k, r in c.RULES.items()} | value['multipliers'] | {'active_mods': value['active_mods']}
+    edits = (value['settings'] | {k: r['default'] for k, r in (*c.RULES.items(), *c.TOGGLES.items())}
+             | value['multipliers'] | value.get('options', {}) | {'active_mods': value['active_mods']})
     c.validate_editable_settings(edits)
     if set(value['discord']) != {'guild_id', 'notification_channel_id'}:
         raise ValueError('Invalid Discord scope.')
@@ -83,7 +87,7 @@ def configure(root, value):
     preserving = authentication(root/n.SAVED) == (value['password'],value['admin_password'])
     c.apply_config(root, {k: value[k] for k in ('settings', 'password', 'admin_password')},
                    preserve_existing_authentication=preserving)
-    changes = value['multipliers'] | {'active_mods': value['active_mods']}
+    changes = value['multipliers'] | value.get('options', {}) | {'active_mods': value['active_mods']}
     plan = c.plan_settings(root, changes)
     c.patch_settings(root, changes, plan['revision'])
     u = value['updates']
