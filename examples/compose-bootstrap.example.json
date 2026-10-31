@@ -16,7 +16,9 @@
     "day_cycle_speed": 1,
     "mating_interval": 1,
     "egg_hatch_speed": 1,
-    "baby_mature_speed": 1
+    "baby_mature_speed": 1,
+    "baby_cuddle_interval": 1,
+    "baby_imprint_amount": 1
   },
   "discord": {
     "guild_id": "REPLACE_GUILD_ID",

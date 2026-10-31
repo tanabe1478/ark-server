@@ -65,7 +65,7 @@ python3 -m scripts.compose_init --check
 | `discord.notification_channel_id` | 自動停止通知先のchannel ID |
 | `settings` | マップ、表示名、人数上限。例のマップは `TheIsland` |
 | `active_mods` | Workshop ID文字列の配列。並び順を維持、最大32個 |
-| `multipliers` | テイム・採取・経験値・昼夜・交配・孵化・成長倍率 |
+| `multipliers` | テイム・採取・経験値・昼夜・交配・孵化・成長倍率、刷り込みの間隔と量 |
 | `auto_start` | 初回のゲーム自動起動。以後は管理操作で記録した稼働希望状態を保持 |
 | `auto_stop` | 約1時間ごとの無人確認による停止 |
 | `updates` | ゲーム・設定済みMOD・実行コード更新、確認間隔、検証用メモリー下限 |

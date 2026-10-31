@@ -37,6 +37,8 @@ RULES = {
     "mating_interval": {"label": "交配の待ち時間", "ini_key": "MatingIntervalMultiplier", "file": "Game.ini", "section": "/script/shootergame.shootergamemode", "min": 0.01, "max": 100, "default": 1.0, "hint": "小さいほど次の交配までの待ち時間が短くなります"},
     "egg_hatch_speed": {"label": "孵化速度", "ini_key": "EggHatchSpeedMultiplier", "file": "Game.ini", "section": "/script/shootergame.shootergamemode", "min": 0.1, "max": 100, "default": 1.0, "hint": "大きいほど卵が速く孵ります"},
     "baby_mature_speed": {"label": "成長速度", "ini_key": "BabyMatureSpeedMultiplier", "file": "Game.ini", "section": "/script/shootergame.shootergamemode", "min": 0.1, "max": 1000, "default": 1.0, "hint": "大きいほど子どもが速く成長します。刷り込み間隔は別設定です"},
+    "baby_cuddle_interval": {"label": "刷り込みの間隔", "ini_key": "BabyCuddleIntervalMultiplier", "file": "Game.ini", "section": "/script/shootergame.shootergamemode", "min": 0.001, "max": 100, "default": 1.0, "hint": "小さいほど刷り込みの世話を頻繁に求められます（1.0で8時間ごと）"},
+    "baby_imprint_amount": {"label": "刷り込み量", "ini_key": "BabyImprintAmountMultiplier", "file": "Game.ini", "section": "/script/shootergame.shootergamemode", "min": 0.1, "max": 100, "default": 1.0, "hint": "1回の世話で増える刷り込み率の倍率。100%を超える分は切り捨てられます"},
 }
 # Fixed ASE on/off keys, written as True/False.
 TOGGLES = {

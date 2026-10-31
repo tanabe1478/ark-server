@@ -1,6 +1,6 @@
 """Preserve every pre-start INI entry, including duplicate Unreal arrays.
 
-Added defaults and equivalent representations of the seven managed numeric
+Added defaults and equivalent representations of the managed numeric
 settings (including omission of their documented 1.0 defaults) are allowed.
 All other entries, MOD order, credentials and duplicate arrays must remain.
 Full shutdown configuration hashes stay strict, without semantic filtering.

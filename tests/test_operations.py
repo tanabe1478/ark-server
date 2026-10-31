@@ -61,7 +61,7 @@ class GameRuleTests(Fixture):
         game = self.root / config.GAME_INI_PATH
         game.write_bytes('; Keep me\r\n[/script/shootergame.shootergamemode]\r\nUnknown=keep\r\n'.encode('utf-8-sig'))
         before = config.configuration_files(self.root)
-        changes = {'taming_speed': 3, 'harvest_amount': 2, 'xp_multiplier': 2, 'day_cycle_speed': .5, 'mating_interval': .25, 'egg_hatch_speed': 5, 'baby_mature_speed': 10, 'active_mods': ['731604991', '1609138312']}
+        changes = {'taming_speed': 3, 'harvest_amount': 2, 'xp_multiplier': 2, 'day_cycle_speed': .5, 'mating_interval': .25, 'egg_hatch_speed': 5, 'baby_mature_speed': 10, 'baby_cuddle_interval': .01, 'baby_imprint_amount': 60, 'active_mods': ['731604991', '1609138312']}
         result = self.apply(changes)
         self.assertEqual(set(result['changes']), set(changes))
         self.assertTrue(ini.read_bytes().startswith(b'\xff\xfe'))
@@ -71,6 +71,7 @@ class GameRuleTests(Fixture):
         self.assertTrue(game.read_bytes().startswith(b'\xef\xbb\xbf'))
         self.assertIn(b'Unknown=keep', game.read_bytes())
         self.assertIn(b'EggHatchSpeedMultiplier=5', game.read_bytes())
+        self.assertIn(b'BabyImprintAmountMultiplier=60', game.read_bytes())
         self.assertEqual(config.load_editable_settings(self.root), result['settings'])
         self.assertEqual(set(config.load_settings(self.root)), set(config.DEFAULTS))
         snapshot = self.root / result['snapshot']
