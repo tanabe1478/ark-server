@@ -276,7 +276,7 @@ class DiscordBotTests(unittest.IsolatedAsyncioTestCase):
         client, channel = await self.idle_results([missing, missing])
         channel.send.assert_awaited_once()
         text = channel.send.call_args.args[0]
-        self.assertIn('無人確認・自動停止を保留', text)
+        self.assertIn('無人時の自動停止をお休み', text)
         self.assertIn('メンテナンス', text)
         self.assertNotIn('処理を完了できませんでした', text)
         self.assertNotIn('停止しました', text)

@@ -89,7 +89,7 @@ class ParticipantMessagesTests(unittest.TestCase):
     def test_unavailable_control_explains_maintenance_without_claiming_game_state(self):
         result = {'ok': False, 'error': {'code': 'service_unavailable'}}
         for text in (failure_text(result), format_status(result, self.join)):
-            self.assertIn('管理機能に接続できない', text)
+            self.assertIn('一時的に応答していない', text)
             self.assertIn('メンテナンス', text)
             self.assertNotIn('処理を完了できませんでした', text)
             self.assertNotIn('停止しました', text)

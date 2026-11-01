@@ -158,7 +158,9 @@ def build_client(config, automation, *, join=None):
                     if self.control_unavailable_notified:
                         print('Idle check paused: control unavailable; outage already reported.', flush=True)
                         continue
-                    text = 'ARKの管理機能に接続できないため、無人確認・自動停止を保留しています。メンテナンス中は完了をお待ちください。それ以外の場合は管理者に連絡してください。'
+                    text = ('ARKサーバーの管理機能が一時的に応答していません。自動更新などのメンテナンスでサーバーを入れ替えている間によく起こり、'
+                            '通常は10〜20分ほどで戻ります（遊んでいる人がいる間は自動更新をしません）。その間は無人時の自動停止をお休みします。'
+                            '1時間以上たっても /ark status で状態を確認できない場合は、管理者に連絡してください。')
                 else:
                     if result['ok']:
                         self.control_unavailable_notified = False
