@@ -1,4 +1,5 @@
 """A2S protocol tests without opening a real network socket."""
+import struct
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -34,6 +35,19 @@ class QueryTests(unittest.TestCase):
         sent = socket.send.call_args_list
         self.assertEqual(sent[1].args[0], sent[0].args[0] + b'1234')
 
+
+    def test_parse_players_and_challenge(self):
+        packet = (b'\xff\xff\xff\xffD\x02' + b'\x00\x00' + struct.pack('<lf', 0, 58500.0)
+                  + b'\x00sora\x00' + struct.pack('<lf', 3, 61.5))
+        socket = MagicMock()
+        socket.recv.side_effect = [b'\xff\xff\xff\xffA1234', packet]
+        with patch('scripts.query.socket.socket') as factory:
+            factory.return_value.__enter__.return_value = socket
+            self.assertEqual(query.query_players('127.0.0.1', 27025), [('', 58500.0), ('sora', 61.5)])
+        self.assertEqual(socket.send.call_args_list[1].args[0], b'\xff\xff\xff\xffU1234')
+        for data in (b'', packet[:-1], b'\xff\xff\xff\xffI\x00'):
+            with self.subTest(data=data), self.assertRaises(query.QueryError):
+                query.parse_players(data)
 
 if __name__ == '__main__':
     unittest.main()

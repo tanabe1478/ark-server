@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Read-only A2S_INFO probe, also importable by the local control layer."""
+"""Read-only A2S_INFO/A2S_PLAYER probes, also importable by the local control layer."""
 import json
 import socket
+import struct
 import sys
 
 if __package__:
@@ -32,6 +33,38 @@ def parse_info(data):
         raise QueryError('Malformed A2S_INFO reply.') from None
     return dict(server=fields[0], map=fields[1], game=fields[3], players=players,
                 max_players=maximum, password_required=bool(password), VAC=bool(vac))
+
+
+def parse_players(data):
+    """A2S_PLAYER entries as (name, connected seconds); names are never logged."""
+    if data[:5] != b'\xff\xff\xff\xffD':
+        raise QueryError('Unsupported A2S_PLAYER reply.')
+    entries, pos = [], 6
+    try:
+        for _ in range(data[5]):
+            end = data.index(0, pos + 1)
+            name = data[pos + 1:end].decode('utf-8', errors='replace')
+            seconds = struct.unpack_from('<f', data, end + 5)[0]
+            entries.append((name, seconds))
+            pos = end + 9
+    except (ValueError, IndexError, struct.error):
+        raise QueryError('Malformed A2S_PLAYER reply.') from None
+    return entries
+
+
+def query_players(host='127.0.0.1', port=None, timeout=2):
+    port = load_settings()['query_port'] if port is None else port
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.settimeout(timeout)
+        sock.connect((host, port))
+        sock.send(b'\xff\xff\xff\xffU\xff\xff\xff\xff')
+        data = sock.recv(65535)
+        if data[:5] == b'\xff\xff\xff\xffA':
+            if len(data) < 9:
+                raise QueryError('Malformed A2S challenge.')
+            sock.send(b'\xff\xff\xff\xffU' + data[5:9])
+            data = sock.recv(65535)
+    return parse_players(data)
 
 
 def query_server(host='127.0.0.1', port=None, timeout=2):

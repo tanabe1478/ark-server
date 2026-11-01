@@ -134,6 +134,21 @@ class GuardedIdleTests(AutomationFixture):
         self.assertFalse(result['data']['changed'])
         self.assertEqual(self.backend.calls, [])
 
+    def test_nameless_long_connection_does_not_block_idle_stop(self):
+        self.game['players'] = 1
+        self.controller.roster = lambda *a, **k: [('', 975 * 60)]
+        self.assertTrue(self.idle()['data']['changed'])
+        self.assertEqual(self.backend.calls, ['stop'])
+
+    def test_named_short_or_unlisted_players_still_block_idle_stop(self):
+        rosters = ([('ALU', 975 * 60)], [('', 600)], [('', 975 * 60), ('sora', 60)], [], [('', float('nan'))], TIMEOUT)
+        for index, roster in enumerate(rosters):
+            with self.subTest(roster=roster):
+                self.game['players'] = 1
+                self.controller.roster = roster if callable(roster) else (lambda r: lambda *a, **k: r)(roster)
+                self.assertFalse(self.idle('kept-' + str(index))['data']['changed'])
+        self.assertEqual(self.backend.calls, [])
+
     def test_pid_changes_during_recheck(self):
         self.delay.side_effect = lambda *_: setattr(self.backend, 'pid', 18)
         self.assertFalse(self.idle()['data']['changed'])

@@ -16,7 +16,7 @@ import uuid
 
 if __package__:
     from . import ark_config, ark_recovery, ark_migration, ark_shutdown
-    from .query import QueryError, query_server
+    from .query import QueryError, query_players, query_server
 else:
     import ark_config
     import ark_recovery
@@ -24,7 +24,7 @@ else:
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from scripts import ark_shutdown
-    from query import QueryError, query_server
+    from query import QueryError, query_players, query_server
 
 API_VERSION = 1
 GAME_UNIT = "ark-genesis.service"
@@ -168,8 +168,11 @@ def exclusive_lock(path):
         yield
 
 
+STALE_CONNECTION_SECONDS = 3600
+
+
 class Controller:
-    def __init__(self, root=ark_config.ROOT, backend=None, probe=None):
+    def __init__(self, root=ark_config.ROOT, backend=None, probe=None, roster=None):
         self.root = Path(root)
         if backend is None and ((self.root / 'config/docker-runtime.json').exists()
                                 or (self.root / 'config/docker-runtime.json').is_symlink()):
@@ -177,6 +180,8 @@ class Controller:
             backend = DockerBackend(self.root)
         self.backend = backend if backend is not None else SystemdBackend()
         self.probe = probe if probe is not None else query_server
+        # Without a roster probe every reported player counts, as before.
+        self.roster = roster if roster is not None else (query_players if probe is None else None)
 
     def shutdown_guard(self):
         return (self.backend.shutdown_guard() if hasattr(self.backend, 'shutdown_guard')
@@ -384,7 +389,20 @@ class Controller:
             return 'query_unavailable', pid
         if not isinstance(game, dict) or game.get('map') != settings['map'] or type(game.get('players')) is not int:
             return 'player_count_unknown', pid
-        return (None if game['players'] == 0 else 'players_present'), pid
+        if game['players'] == 0 or self._only_stale_connections(settings, game['players']):
+            return None, pid
+        return 'players_present', pid
+
+    def _only_stale_connections(self, settings, count):
+        """ASE can keep a nameless slot after a dropped client; real players report a name."""
+        if self.roster is None:
+            return False
+        try:
+            entries = self.roster('127.0.0.1', settings['query_port'], timeout=2)
+        except (OSError, QueryError):
+            return False
+        return (len(entries) >= count and all(not name.strip() and math.isfinite(seconds) and seconds >= STALE_CONNECTION_SECONDS
+                                              for name, seconds in entries))
 
     def _dispatch(self, action, params):
         if action == "settings.show":
