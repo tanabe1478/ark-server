@@ -173,16 +173,23 @@ def capture(source, destination):
                 output.flush()
                 os.fsync(output.fileno())
     shutil.copytree(source, destination / 'Saved', copy_function=copy, symlinks=True)
-    inventory(destination / 'Saved')
+    copied_files = inventory(destination / 'Saved')
     after = inventory(source)
-    if before != after:
+    volatile = lambda name: name.startswith(ark_game.VOLATILE_SAVED)
+    stable = lambda value: {key: item for key, item in value.items() if not volatile(key)}
+    if stable(before) != stable(after) or {k for k in copied_files if not volatile(k)} != set(stable(after)):
         raise ShutdownError('Saved changed during capture.')
     entries = {}
-    for name, details in after.items():
+    for name, details in stable(after).items():
         copied, current = digest(destination / 'Saved' / name), digest(source / name)
         if copied != current:
             raise ShutdownError('Saved changed during capture.')
         entries[name] = details | {'sha256': current}
+    # A volatile file is recorded as it was copied, never as proof of progress.
+    for name, details in copied_files.items():
+        if volatile(name):
+            entries[name] = {'bytes': details['bytes'], 'mtime_ns': details['mtime_ns'],
+                             'sha256': digest(destination / 'Saved' / name)}
     for folder, dirs, files in os.walk(destination):
         Path(folder).chmod(0o700)
     save(destination / 'manifest.json', {'files': entries, 'consistent_game_content_proven': False})

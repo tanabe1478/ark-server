@@ -130,3 +130,17 @@ class ReadOnlySourceUpdateTests(unittest.TestCase):
         self.assertFalse((updater.folder/'candidate/server').exists())
         self.assertEqual(n.private_json(updater.folder/'candidate/asset-manifest.json')['versions'],self.versions)
         self.assertIn(('game','','/opt/ark/server',True),engine.run_job.call_args.args[5])
+
+
+class AseCaptureTests(unittest.TestCase):
+    def test_ase_still_rejects_any_change_during_capture(self):
+        real=n.shutil.copytree
+        with tempfile.TemporaryDirectory() as folder:
+            saved=Path(folder)/'Saved';(saved/'Logs').mkdir(parents=True)
+            (saved/'Logs/ShooterGame.log').write_bytes(b'log')
+            def copy_then_write(source,*args,**kwargs):
+                result=real(source,*args,**kwargs)
+                if Path(source)==saved:(saved/'Logs/ShooterGame.log').write_bytes(b'longer log')
+                return result
+            with patch.object(n.shutil,'copytree',side_effect=copy_then_write):
+                with self.assertRaises(n.ShutdownError):n.capture(saved,Path(folder)/'snapshot')

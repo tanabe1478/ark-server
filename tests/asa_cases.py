@@ -200,3 +200,69 @@ class AsaIntegrityTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class AsaCaptureTests(unittest.TestCase):
+    """ASA rewrites its logs and ServerMetrics heartbeat while running."""
+    def capture_while(self, relative):
+        from unittest.mock import patch
+        from scripts import ark_shutdown as n
+        real = n.shutil.copytree
+        with tempfile.TemporaryDirectory() as folder:
+            saved = Path(folder) / 'Saved'
+            for name, data in (('SavedArks/Astraeos_WP/Astraeos_WP.ark', b'w' * 5000),
+                               ('Logs/ShooterGame.log', b'log'), ('ServerMetrics/nekosaba_7777.run', b'beat')):
+                (saved / name).parent.mkdir(parents=True, exist_ok=True)
+                (saved / name).write_bytes(data)
+            def copy_then_write(source, *args, **kwargs):
+                result = real(source, *args, **kwargs)
+                if Path(source) == saved:  # copytree recurses through this name
+                    with (saved / relative).open('ab') as stream:
+                        stream.write(b'+changed')
+                return result
+            with patch.object(n.shutil, 'copytree', side_effect=copy_then_write):
+                return n.capture(saved, Path(folder) / 'snapshot')
+
+    def test_heartbeat_and_log_changes_do_not_abort_a_stop(self):
+        for relative in ('ServerMetrics/nekosaba_7777.run', 'Logs/ShooterGame.log'):
+            entries = self.capture_while(relative)
+            # Recorded as copied: the snapshot's own bytes, never the moving source.
+            self.assertEqual(entries[relative]['bytes'], len(b'beat' if 'Metrics' in relative else b'log'))
+            self.assertIn('SavedArks/Astraeos_WP/Astraeos_WP.ark', entries)
+
+    def test_progress_changes_still_abort(self):
+        from scripts import ark_shutdown as n
+        with self.assertRaises(n.ShutdownError):
+            self.capture_while('SavedArks/Astraeos_WP/Astraeos_WP.ark')
+
+
+class AsaQualificationTests(unittest.TestCase):
+    def cycle(self):
+        state = {'ActiveState': 'inactive', 'Result': 'success', 'MainPID': 0, 'InvocationID': 'a' * 32,
+                 'Runtime': 'compose-process', 'ObserverReady': False, 'SupervisorReturnCode': 0,
+                 'PrivateBootstrap': True, 'OOMKilled': False}
+        world = 'SavedArks/Astraeos_WP/Astraeos_WP.ark'
+        receipt = {'schema': 5, 'game': 'asa', 'clean_exit': True, 'warning': None, 'service_record': state,
+                   'runtime': {'r': 1}, 'native_policy': {'p': 1}, 'world': world,
+                   'save': {'confirmed': True, 'rcon_reply': 'World Saved', 'world': world}}
+        return receipt, state, {'runtime': {'r': 1}, 'native_policy': {'p': 1}}
+
+    def test_clean_private_exit_is_accepted(self):
+        from scripts.compose_apply import asa_cycle
+        asa_cycle(*self.cycle())
+
+    def test_any_gap_is_rejected(self):
+        from scripts.compose_apply import asa_cycle
+        for change in (lambda r, s: s.update(SupervisorReturnCode=-6), lambda r, s: s.update(PrivateBootstrap=False),
+                       lambda r, s: s.update(OOMKilled=None), lambda r, s: r['save'].update(confirmed=False),
+                       lambda r, s: r.update(schema=4), lambda r, s: r.update(clean_exit=False),
+                       lambda r, s: r.update(runtime={'other': 1})):
+            receipt, state, certificate = self.cycle()
+            change(receipt, state)
+            with self.assertRaises(ValueError):
+                asa_cycle(receipt, state, certificate)
+
+    def test_trial_profile_probe_uses_the_asa_profile(self):
+        source = Path('scripts/compose_profile_probe.py').read_text()
+        self.assertIn('n._expected(n.CODE_ROOT)', source)
+        self.assertNotIn('compose_profiles', source)

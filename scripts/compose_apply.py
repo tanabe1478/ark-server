@@ -9,7 +9,7 @@ import shutil
 import sys
 import uuid
 
-from . import ark_shutdown as n
+from . import ark_game, ark_shutdown as n
 from .ark_docker import verify_files
 from .ark_process import CONFIG, TRANSITION, LAUNCH, build_identity, contract
 from .compose_assets import copy_assets, tree_manifest
@@ -19,6 +19,22 @@ from .compose_server import PENDING
 
 def asset_files(root):
     return tree_manifest(root, exclude_saved=True)
+
+
+def asa_cycle(value, state, certificate):
+    """One private ASA trial: confirmed save, DoExit and a clean exit code 0."""
+    save = value.get('save', {})
+    if (type(value.get('schema')) is not int or value['schema'] != 5 or value.get('game') != 'asa'
+            or value.get('clean_exit') is not True or value.get('warning') is not None
+            or value.get('service_record') != state
+            or type(state.get('SupervisorReturnCode')) is not int or state['SupervisorReturnCode'] != 0
+            or type(state.get('MainPID')) is not int or state['MainPID'] != 0
+            or state.get('ActiveState') != 'inactive' or state.get('Result') != 'success'
+            or state.get('Runtime') != 'compose-process' or state.get('OOMKilled') is not False
+            or state.get('PrivateBootstrap') is not True
+            or save.get('confirmed') is not True or save.get('rcon_reply') != 'World Saved' or save.get('world') != value.get('world')
+            or value.get('runtime') != certificate['runtime'] or value.get('native_policy') != certificate['native_policy']):
+        raise ValueError('Candidate ASA exit is not qualified.')
 
 
 def validate_certificate(certificate, pending, trial=Path('/validation')):
@@ -37,7 +53,9 @@ def validate_certificate(certificate, pending, trial=Path('/validation')):
     for cycle in certificate['cycles']:
         value = cycle['receipt']
         state = cycle['state']
-        if (type(value.get('schema')) is not int or value['schema'] != 4 or value.get('clean_exit') is not False
+        if ark_game.ASA:
+            asa_cycle(value, state, certificate)
+        elif (type(value.get('schema')) is not int or value['schema'] != 4 or value.get('clean_exit') is not False
                 or value.get('warning') != 'expected_native_abort' or value.get('service_record') != state
                 or type(state.get('SupervisorReturnCode')) is not int or state['SupervisorReturnCode'] != -6
                 or type(state.get('MainPID')) is not int or state['MainPID'] != 0
@@ -56,7 +74,13 @@ def validate_certificate(certificate, pending, trial=Path('/validation')):
             raise ValueError('Candidate receipt changed.')
         before = n.private_json(folder / 'before/manifest.json',8*1024**2)['files']
         after = n.private_json(folder / 'after/manifest.json',8*1024**2)['files']
-        if not n.observed_proof(value['observation'],value['intent'],value['world'],before,after,points):
+        if ark_game.ASA:
+            # The ASA receipt already binds the RCON ack, a new log completion
+            # and a rewritten world; the preserved after-copy must hold it.
+            world = after.get(value['world'])
+            if world is None or world['bytes'] < 4096:
+                raise ValueError('Candidate world is missing after the qualified exit.')
+        elif not n.observed_proof(value['observation'],value['intent'],value['world'],before,after,points):
             raise ValueError('Candidate native observation is insufficient.')
         original=files.get(value['world'])
         if original and after[value['world']]['bytes']*10<original['bytes']*9:

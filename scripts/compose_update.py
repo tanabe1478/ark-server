@@ -195,11 +195,21 @@ class Updater:
                   self.mount('trial/Saved','/opt/ark/server/ShooterGame/Saved')]
         mounts += [self.mount('trial/'+name,'/opt/ark/'+name) for name in ('config','logs','backups')]
         mounts += [self.mount('trial/result','/result')]
+        options = {}
+        if ark_game.ASA:
+            # A separate Proton prefix and writable runtime paths; nothing of
+            # production's compat or runtime volumes is shared with the trial.
+            extra = {'compat': '/opt/ark/' + str(ark_game.COMPAT)}
+            extra |= {'runtime-'+str(index): '/opt/ark/' + str(path) for index, path in enumerate(ark_game.RUNTIME_WRITABLE)}
+            for name, target in extra.items():
+                (trial / name).mkdir(mode=0o700)
+                mounts.append(self.mount('trial/'+name, target))
+            options = {'pids': 4096, 'oomd_omit': True}
         self.save('qualifying')
         def held():
             failure=trial/'result/failure.json'
             return failure.exists() and n.private_json(failure).get('native_launch_intent_created') is True
-        result = self.engine.run_job(image,self.record['job'],'qualification','scripts.compose_qualify',[],mounts,timeout=1800,held=held)
+        result = self.engine.run_job(image,self.record['job'],'qualification','scripts.compose_qualify',[],mounts,timeout=3600 if ark_game.ASA else 1800,held=held,**options)
         self.save('qualification_finished',qualification_container=result['container'])
         if result.get('cancelled'):
             stopped=call({'method':'cancel_update','job':self.record['job']})

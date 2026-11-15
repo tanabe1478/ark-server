@@ -7,7 +7,8 @@ import sys
 import time
 
 from . import ark_shutdown as n
-from .ark_process import ProcessBackend, bootstrap, build_identity, contract
+from . import ark_game
+from .ark_process import bootstrap, build_identity, contract
 from .compose_assets import tree_manifest
 
 
@@ -27,7 +28,10 @@ def qualify(root=n.CODE_ROOT, result=Path('/result/qualification.json')):
     original_progress=progress(root)
     input_configuration=n.configuration(root)
     runtime = bootstrap(root)
-    backend = ProcessBackend(root)
+    from .compose_configure import game_backend
+    backend = game_backend(root)
+    # ASE proves its save by observing an expected abort; ASA exits cleanly.
+    expected = {'clean_exit': True, 'warning': None} if ark_game.ASA else {'clean_exit': False, 'warning': 'expected_native_abort'}
     cycles = []
     for index in range(2):
         backend._launch(private=True)
@@ -35,10 +39,10 @@ def qualify(root=n.CODE_ROOT, result=Path('/result/qualification.json')):
         stopped = backend.shutdown_guard().stop(backend)
         verified = backend.shutdown_guard().verify_startable(backend.state())
         verify_progress(root,original_progress)
-        if not stopped['changed'] or verified.get('warning') != 'expected_native_abort':
+        if not stopped['changed'] or {key: verified.get(key) for key in expected} != expected:
             raise n.ShutdownError('Candidate did not complete a qualified save/exit.')
         cycles.append({'state': backend.state(), 'receipt': n.private_json(root / n.DIRECTORY / 'last-stop.json'),
-                       'clean_exit': False, 'warning': 'expected_native_abort'})
+                       **expected})
     value = {'schema': 1, 'two_cycles_passed': True, 'progress_shape_verified':True, 'runtime': runtime, 'native_policy': n.policy(root),
              'image_build': build_identity(), 'source_contract': contract(),
              'input_saved': source, 'input_saved_digest': digest_value(source),

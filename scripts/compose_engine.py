@@ -128,16 +128,18 @@ class ComposeEngine(Engine):
         elif host.get('PortBindings'):
             raise ValueError('Management services must not publish ports.')
 
-    def run_job(self, image, job, purpose, module, args, mounts, *, env=None, timeout=7200, held=None):
+    def run_job(self, image, job, purpose, module, args, mounts, *, env=None, timeout=7200, held=None, pids=512, oomd_omit=False):
         if not re.fullmatch('[0-9a-f]{32}', job) or not re.fullmatch('[a-z][a-z0-9-]{0,30}', purpose):
             raise ValueError('Invalid maintenance job.')
         self.image(image)
         name = self.project + '-' + purpose + '-' + job[:16]
         if self.inspect(name) is not None:
             raise ControlError('outcome_unknown')  # Never replay an existing invocation.
+        if type(pids) is not int or not 512 <= pids <= 8192:
+            raise ValueError('Invalid job process limit.')
         command = ['container','create','--name',name,'--init','--restart=no','--read-only',
             '--cap-drop=ALL','--security-opt=no-new-privileges','--user=0:0','--network=bridge',
-            '--pids-limit=512','--ulimit','core=0','--shm-size=256m','--no-healthcheck',
+            '--pids-limit='+str(pids),'--ulimit','core=0','--shm-size=256m','--no-healthcheck',
             '--tmpfs','/tmp:rw,nosuid,nodev,size=512m','--tmpfs','/run/ark:rw,nosuid,nodev,size=128m',
             '--tmpfs','/run/ark-locks:rw,nosuid,nodev,size=1m,mode=700',
             '--label','dev.ark.job='+job,'--label','dev.ark.purpose='+purpose,
@@ -150,6 +152,9 @@ class ComposeEngine(Engine):
             if subpath:spec += ',volume-subpath='+subpath
             if readonly:spec += ',readonly'
             command += ['--mount',spec]
+        if oomd_omit:
+            # Same as compose.asa.yaml: systemd-oomd must not pick a 16GB+ ASA trial.
+            command += ['--annotation',"org.systemd.property.ManagedOOMPreference='omit'"]
         for key, value in (env or {}).items():
             if key not in ('ARK_INSTALL_OPERATION',):raise ValueError('Unexpected job environment.')
             command += ['--env',key+'='+value]
