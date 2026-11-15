@@ -277,3 +277,54 @@ class AsaEngineTests(unittest.TestCase):
         extra = {target: value for target, value in TARGETS['server'].items() if target in declared}
         self.assertEqual(len(declared), 4)
         self.assertEqual(extra, {target: (name, True) for target, name in declared.items()})
+
+
+class AsaUpdaterTests(unittest.TestCase):
+    def updater(self, folder):
+        from unittest.mock import Mock
+        from scripts import compose_update as u
+        engine = Mock(project='ark-asa', endpoint='unix:///x.sock')
+        updater = u.Updater(root=Path(folder), engine=engine)
+        updater.record = {'job': 'a' * 32}
+        updater.folder = Path(folder) / 'job'
+        updater.folder.mkdir()
+        return u, updater, engine
+
+    def test_candidate_images_are_built_for_asa(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            u, updater, engine = self.updater(folder)
+            def run(command, **kwargs):
+                Path(command[command.index('--iidfile') + 1]).write_text('sha256:' + 'b' * 64)
+                return type('R', (), {'returncode': 0})()
+            with patch.object(u.subprocess, 'run', side_effect=run) as called:
+                updater.build(Path(folder), 'server', 'runtime')
+        command = called.call_args.args[0]
+        self.assertIn('ARK_GAME=asa', command)
+
+    def test_trial_gets_its_own_proton_prefix_and_runtime_paths(self):
+        from contextlib import ExitStack
+        from unittest.mock import patch
+        from scripts import ark_shutdown as n
+        with tempfile.TemporaryDirectory() as folder:
+            u, updater, engine = self.updater(folder)
+            n.save(Path(folder) / u.PENDING, {'files': {}})
+            (Path(folder) / n.SAVED).mkdir(parents=True)
+            n.save(Path(folder) / 'config/server.json', {})
+            class Stop(Exception):
+                pass
+            engine.run_job.side_effect = Stop
+            with ExitStack() as stack:
+                stack.enter_context(patch('scripts.ark_docker.verify_files'))
+                stack.enter_context(patch.object(u, 'persist'))
+                with self.assertRaises(Stop):
+                    updater.qualify('sha256:' + 'c' * 64)
+        args, kwargs = engine.run_job.call_args
+        targets = {mount[2]: mount for mount in args[5]}
+        for target in ('/opt/ark/compat', '/opt/ark/server/ShooterGame/Binaries/Win64/ShooterGame',
+                       '/opt/ark/server/ShooterGame/.sentry-native', '/opt/ark/server/Engine/Saved'):
+            suffix, subpath, _, readonly = targets[target]
+            self.assertEqual(suffix, 'staging')
+            self.assertTrue(subpath.startswith('jobs/' + 'a' * 32 + '/trial/'))
+            self.assertFalse(readonly)
+        self.assertEqual((kwargs['pids'], kwargs['oomd_omit'], kwargs['timeout']), (4096, True, 3600))

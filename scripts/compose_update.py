@@ -16,7 +16,7 @@ import tarfile
 import time
 import uuid
 
-from . import ark_config as c, ark_shutdown as n
+from . import ark_config as c, ark_game, ark_shutdown as n
 from .ark_control import ControlError, exclusive_lock
 from .compose_assets import fetch, extract_tar, asset_bytes
 from .compose_engine import ComposeEngine
