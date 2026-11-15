@@ -692,7 +692,7 @@ class MapSwitchTests(FilesFixture):
         self.input=self.root/'bootstrap.json'
         backend=Mock();backend.state.return_value={'MainPID':0,'ActiveState':'failed','InvocationID':'a'*32}
         for target,value_ in ((self.m,'INPUT'),):self.enterContext(patch.object(target,value_,self.input))
-        self.enterContext(patch.object(self.m,'ProcessBackend',return_value=backend))
+        self.enterContext(patch.object(self.m,'game_backend',return_value=backend))
         self.enterContext(patch.object(self.m,'descriptor',return_value={'deployment_id':'d'}))
         self.enterContext(patch.object(self.m.n,'policy',return_value={'native_points':{}}))
         self.backend=backend

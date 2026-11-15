@@ -174,6 +174,19 @@ class AsaProfileTests(unittest.TestCase):
         self.assertEqual(value['native_points'], {})
         self.assertEqual(value['observer_contract'], {'contract': 'x'})
 
+    def test_maintenance_tools_use_the_asa_backend(self):
+        # Configuration edits and map switches verify the last stop before
+        # touching INIs; with the ASE backend an ASA receipt can never pass.
+        from scripts import asa_process, compose_configure, compose_map
+        from scripts.compose_configure import game_backend
+        self.assertIs(compose_configure.game_backend, game_backend)
+        self.assertIs(compose_map.game_backend, game_backend)
+        with tempfile.TemporaryDirectory() as folder:
+            backend = game_backend(Path(folder))
+            self.addCleanup(backend.popen.close)
+        self.assertIsInstance(backend, asa_process.AsaBackend)
+        self.assertIs(backend.GUARD, asa_process.AsaShutdownGuard)
+
 
 class AsaIntegrityTests(unittest.TestCase):
     def test_client_user_settings_may_change_but_server_settings_may_not(self):

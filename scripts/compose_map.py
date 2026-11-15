@@ -11,8 +11,8 @@ import uuid
 
 from . import ark_config as c, ark_shutdown as n
 from .ark_control import exclusive_lock
-from .ark_process import ProcessBackend, TRANSITION, QUALIFICATION, descriptor
-from .compose_configure import MARKER
+from .ark_process import TRANSITION, QUALIFICATION, descriptor
+from .compose_configure import MARKER, game_backend
 from .compose_setup import INPUT, ACCEPTED, input_digest, configure, validate, authentication
 
 # Official ASE maps shipped with app 376030, by launch name.
@@ -76,7 +76,7 @@ def switch(target, data, root=n.CODE_ROOT):
     value=validate(n.private_json(INPUT,16384),preserved_authentication=preserved)
     previous=check_request(root,value,n.private_json(root/ACCEPTED,16384),target,data)
     with exclusive_lock(root/'.controller.lock'),exclusive_lock(root/'.control.lock'),c.server_lock(root):
-        backend=ProcessBackend(root)
+        backend=game_backend(root)
         try:
             state=backend.state();backend.shutdown_guard().verify_startable(state)
             runtime=descriptor(root);policy=n.policy(root)

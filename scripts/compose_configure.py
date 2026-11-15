@@ -14,6 +14,15 @@ MANAGED=(Path('config/server.json'),Path('config/compose.json'),Path('config/dis
 INI=(c.INI_PATH,c.GAME_INI_PATH)
 
 
+def game_backend(root):
+    """The backend for this container's game; ASA needs its own save/exit proof."""
+    from . import ark_game
+    if ark_game.ASA:
+        from .asa_process import AsaBackend
+        return AsaBackend(root)
+    return ProcessBackend(root)
+
+
 def check_non_ini(root, original):
     current=n.inventory(root/n.SAVED)
     ini={str(path.relative_to(n.SAVED)) for path in INI}
@@ -36,7 +45,7 @@ def update(root=n.CODE_ROOT):
     # is a separate staged asset operation; this tool never executes installers.
     c.plan_settings(root,value['multipliers']|value.get('options',{})|{'active_mods':value['active_mods']})
     with exclusive_lock(root/'.controller.lock'),exclusive_lock(root/'.control.lock'),c.server_lock(root):
-        backend=ProcessBackend(root)
+        backend=game_backend(root)
         try:
             state=backend.state();backend.shutdown_guard().verify_startable(state)
             runtime=descriptor(root);policy=n.policy(root)
