@@ -44,9 +44,10 @@ class AsaConfigTests(unittest.TestCase):
                 config.validate_ini_credentials(base + extra)
         config.validate_ini_credentials(base + 'RCONEnabled=True\nRCONPort=27020\n')
 
-    def test_active_mods_block_startup_until_supported(self):
-        self.assertEqual(config.mod_inventory(self.root, [])[:1], [])
-        self.assertFalse(config.mod_inventory(self.root, ['928102'])[0]['content_present'])
+    def test_active_mods_are_downloaded_by_the_server(self):
+        self.assertEqual(config.mod_inventory(self.root, []), [])
+        item = config.mod_inventory(self.root, ['929713', '928708'])[1]
+        self.assertEqual((item['content_present'], item['order'], item['source']), (True, 2, 'server_download'))
 
 
 class FakeRcon:
@@ -328,3 +329,24 @@ class AsaUpdaterTests(unittest.TestCase):
             self.assertTrue(subpath.startswith('jobs/' + 'a' * 32 + '/trial/'))
             self.assertFalse(readonly)
         self.assertEqual((kwargs['pids'], kwargs['oomd_omit'], kwargs['timeout']), (4096, True, 3600))
+
+
+class AsaModFlagTests(unittest.TestCase):
+    def test_mods_are_passed_in_load_order(self):
+        from unittest.mock import patch
+        from scripts import asa_worker
+        settings = {'max_players': 20}
+        with patch.object(asa_worker.ark_config, 'load_settings', return_value=settings), \
+             patch.object(asa_worker.ark_config, 'load_editable_settings', return_value={'active_mods': ['929713', '947033']}):
+            public = asa_worker.flags(Path('/x'), False)
+            private = asa_worker.flags(Path('/x'), True)
+        self.assertIn('-mods=929713,947033', public)
+        self.assertEqual(private[-1], '-MultiHome=127.0.0.1')
+        with patch.object(asa_worker.ark_config, 'load_settings', return_value=settings), \
+             patch.object(asa_worker.ark_config, 'load_editable_settings', return_value={'active_mods': []}):
+            self.assertFalse(any(flag.startswith('-mods') for flag in asa_worker.flags(Path('/x'), False)))
+
+    def test_new_rules_and_toggles_write_server_settings(self):
+        self.assertEqual(config.RULES['difficulty']['ini_key'], 'OverrideOfficialDifficulty')
+        for key, ini in (('allow_speed_leveling', 'AllowSpeedLeveling'), ('allow_flyer_speed_leveling', 'AllowFlyerSpeedLeveling')):
+            self.assertEqual((config.TOGGLES[key]['ini_key'], config.TOGGLES[key]['section']), (ini, 'ServerSettings'))

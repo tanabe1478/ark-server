@@ -74,6 +74,10 @@ def environment(root):
 def flags(root, private):
     settings = ark_config.load_settings(root)
     result = [f"-WinLiveMaxPlayers={settings['max_players']}", '-NoBattlEye', '-servergamelog', '-log']
+    mods = ark_config.load_editable_settings(root)['active_mods']
+    if mods:
+        # Load order matters (stacking MODs first); IDs are validated as numeric.
+        result.append('-mods=' + ','.join(mods))
     if private:
         result.append('-MultiHome=127.0.0.1')
     return result

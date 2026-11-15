@@ -43,10 +43,13 @@ RULES = {
     "egg_hatch_speed": {"label": "孵化速度", "ini_key": "EggHatchSpeedMultiplier", "file": "Game.ini", "section": "/script/shootergame.shootergamemode", "min": 0.1, "max": 100, "default": 1.0, "hint": "大きいほど卵が速く孵ります"},
     "baby_mature_speed": {"label": "成長速度", "ini_key": "BabyMatureSpeedMultiplier", "file": "Game.ini", "section": "/script/shootergame.shootergamemode", "min": 0.1, "max": 1000, "default": 1.0, "hint": "大きいほど子どもが速く成長します。刷り込み間隔は別設定です"},
     "baby_cuddle_interval": {"label": "刷り込みの間隔", "ini_key": "BabyCuddleIntervalMultiplier", "file": "Game.ini", "section": "/script/shootergame.shootergamemode", "min": 0.0001, "max": 100, "default": 1.0, "hint": "小さいほど刷り込みの世話を頻繁に求められます（1.0で8時間ごと）"},
+    "difficulty": {"label": "難易度", "ini_key": "OverrideOfficialDifficulty", "file": "GameUserSettings.ini", "section": "ServerSettings", "min": 1, "max": 10, "default": 1.0, "hint": "野生の最高レベルは難易度×30（5で150）"},
     "baby_imprint_amount": {"label": "刷り込み量", "ini_key": "BabyImprintAmountMultiplier", "file": "Game.ini", "section": "/script/shootergame.shootergamemode", "min": 0.1, "max": 100, "default": 1.0, "hint": "1回の世話で増える刷り込み率の倍率。100%を超える分は切り捨てられます"},
 }
 # Fixed ASE on/off keys, written as True/False.
 TOGGLES = {
+    "allow_speed_leveling": {"label": "移動速度のレベル上げ", "ini_key": "AllowSpeedLeveling", "file": "GameUserSettings.ini", "section": "ServerSettings", "default": False, "hint": "オンにすると恐竜の移動速度にポイントを振れます"},
+    "allow_flyer_speed_leveling": {"label": "飛行生物の移動速度のレベル上げ", "ini_key": "AllowFlyerSpeedLeveling", "file": "GameUserSettings.ini", "section": "ServerSettings", "default": False, "hint": "オンにすると飛行生物の移動速度にもポイントを振れます"},
     "show_map_player_location": {"label": "地図に自分の位置を表示", "ini_key": "ShowMapPlayerLocation", "file": "GameUserSettings.ini", "section": "ServerSettings", "default": False, "hint": "オンにすると地図に自分の位置と向きが出ます"},
 }
 EDITABLE_SETTINGS = frozenset(("session_name", "max_players", "active_mods", *RULES, *TOGGLES))
@@ -343,9 +346,11 @@ def load_editable_settings(root=ROOT):
 
 def mod_inventory(root, active_ids):
     if game.ASA:
-        # CurseForge MODs are not supported yet; any active one blocks startup.
-        return [{"id": item, "active": True, "content_present": False, "order": index + 1}
-                for index, item in enumerate(active_ids)]
+        # The ASA server itself downloads CurseForge MODs named by -mods= at
+        # every start (into the writable ModsUserData volume); there is no
+        # pre-start content to inspect, so presence is the server's duty.
+        return [{"id": item, "active": True, "content_present": True, "order": index + 1,
+                 "source": "server_download"} for index, item in enumerate(active_ids)]
     folder = root / "server/ShooterGame/Content/Mods"
     installed_ids = {path.stem for path in folder.glob("*.mod") if re.fullmatch(MOD_ID, path.stem)}
     result = []
