@@ -102,5 +102,77 @@ class AsaRconTests(unittest.TestCase):
                 rcon.parse_players(text)
 
 
+
+class AsaSaveProofTests(unittest.TestCase):
+    """The save proof needs ALL of: RCON ack, a NEW log completion, a rewritten world."""
+    def setUp(self):
+        from unittest.mock import patch
+        from scripts import ark_shutdown as n, asa_process
+        self.n, self.asa = n, asa_process
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.saved = self.root / n.SAVED
+        (self.saved / 'Logs').mkdir(parents=True)
+        (self.saved / 'SavedArks/Astraeos_WP').mkdir(parents=True)
+        self.world = 'SavedArks/Astraeos_WP/Astraeos_WP.ark'
+        (self.saved / self.world).write_bytes(b'w' * 5000)
+        self.log = self.saved / 'Logs/ShooterGame.log'
+        self.log.write_text('World Save Complete. Took: 1\n')
+        backend = type('B', (), {'observer_check': lambda inner: {'started_ns': 0, 'pid': 1}})()
+        self.guard = asa_process.AsaShutdownGuard(self.root, backend)
+        for target in ('scripts.asa_process.rcon.admin_password', 'scripts.asa_process.time.sleep'):
+            patcher = patch(target, return_value='x' if 'admin' in target else None)
+            patcher.start(); self.addCleanup(patcher.stop)
+        self.deadline = patch('scripts.asa_process.time.monotonic', side_effect=[0, 0, 1, 200, 200, 200])
+        self.deadline.start(); self.addCleanup(self.deadline.stop)
+
+    def run_save(self, reply, write_log, rewrite):
+        from unittest.mock import patch
+        before = self.n.inventory(self.saved)[self.world]
+        def command(text, password, **kwargs):
+            if write_log:
+                with self.log.open('a') as stream:
+                    stream.write('World Save Complete. Took: 0.6\n')
+            if rewrite:
+                os.utime(self.saved / self.world, ns=(before['mtime_ns'] + 10**9, before['mtime_ns'] + 10**9))
+            return reply
+        with patch('scripts.asa_process.rcon.command', side_effect=command):
+            return self.guard._save(self.world, before)
+
+    def test_complete_save_is_confirmed(self):
+        result = self.run_save('World Saved', True, True)
+        self.assertTrue(result['confirmed'])
+        self.assertEqual(result['world'], self.world)
+
+    def test_any_missing_piece_is_not_a_save(self):
+        for reply, write_log, rewrite in (('Server received, But no response!!', True, True),
+                                          ('World Saved', False, True), ('World Saved', True, False)):
+            with self.subTest(reply=reply, log=write_log, rewrite=rewrite):
+                self.deadline.stop(); self.deadline.start()
+                with self.assertRaises(self.n.ShutdownError):
+                    self.run_save(reply, write_log, rewrite)
+
+
+class AsaProfileTests(unittest.TestCase):
+    def test_expected_profile_binds_build_binary_and_proton(self):
+        from unittest.mock import patch
+        from scripts import asa_process
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'server/steamapps').mkdir(parents=True)
+            (root / 'server/steamapps/appmanifest_2430930.acf').write_text('"AppState"\n{\n\t"buildid"\t\t"26672069"\n}\n')
+            (root / game.BINARY).parent.mkdir(parents=True)
+            (root / game.BINARY).write_bytes(b'MZ')
+            proton = root / 'proton'
+            proton.mkdir()
+            (proton / 'version').write_text('1700000000 GE-Proton11-11\n')
+            with patch.object(asa_process.game, 'PROTON', proton):
+                value = asa_process.expected(root, {'contract': 'x'})
+        self.assertEqual(value['build_id'], '26672069')
+        self.assertEqual(value['proton'], '1700000000 GE-Proton11-11')
+        self.assertEqual(value['native_points'], {})
+        self.assertEqual(value['observer_contract'], {'contract': 'x'})
+
 if __name__ == '__main__':
     unittest.main()
