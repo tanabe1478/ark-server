@@ -176,9 +176,20 @@ class AsaShutdownGuard(ProcessShutdownGuard):
             final = after.get(world)
             if (stopped.get('OOMKilled') is not False or type(stopped['SupervisorReturnCode']) is not int
                     or stopped['SupervisorReturnCode'] != 0 or stopped['MainPID'] != 0
-                    or stopped['InvocationID'] != state['InvocationID'] or n.configuration(self.root) != config
+                    or stopped['InvocationID'] != state['InvocationID']
                     or final is None or final['bytes'] < 4096 or final['mtime_ns'] < save['world_mtime_ns']):
                 raise n.ShutdownError('Unexpected process exit or incomplete save evidence.')
+            # ASA rewrites all its INIs on exit (adding defaults), so file hashes
+            # change. Every pre-start entry and managed value must still be there;
+            # the receipt then binds the rewritten files the next start will use.
+            from .compose_integrity import verify
+            if backend.required_ini is None:
+                raise n.ShutdownError('Pre-start configuration evidence is unavailable.')
+            try:
+                verify(self.root, backend.required_ini)
+            except ValueError as error:
+                raise n.ShutdownError('ASA changed existing configuration on exit.') from error
+            config = n.configuration(self.root)
             value = {'schema': 5, 'game': 'asa', 'clean_exit': True, 'warning': None,
                      'runtime': runtime, 'native_policy': policy, 'configuration': config,
                      'service_record': stopped, 'snapshot': str(folder.relative_to(self.root)),

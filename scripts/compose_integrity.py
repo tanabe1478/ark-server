@@ -29,9 +29,17 @@ def entries(path):
     return result
 
 
+# ASA keeps client-side user settings (benchmarks, bHasSavedGame) in this section
+# of GameUserSettings.ini and rewrites them on exit; they never configure the
+# server. Version is still required separately by validate_ini_initialization.
+ASA_VOLATILE_SECTION=c.GAME_USER_SETTINGS_SECTION.casefold()
+
+
 def unmanaged(values, filename):
     managed={(rule['section'].casefold(),rule['ini_key'].casefold()) for rule in (*c.RULES.values(),*c.TOGGLES.values()) if rule['file']==filename}
-    return Counter({item:count for item,count in values.items() if item[:2] not in managed})
+    volatile=game.ASA and filename==c.INI_PATH.name
+    return Counter({item:count for item,count in values.items()
+                    if item[:2] not in managed and not (volatile and item[0]==ASA_VOLATILE_SECTION)})
 
 
 def capture(root):

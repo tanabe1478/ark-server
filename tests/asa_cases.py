@@ -174,5 +174,16 @@ class AsaProfileTests(unittest.TestCase):
         self.assertEqual(value['native_points'], {})
         self.assertEqual(value['observer_contract'], {'contract': 'x'})
 
+
+class AsaIntegrityTests(unittest.TestCase):
+    def test_client_user_settings_may_change_but_server_settings_may_not(self):
+        from collections import Counter
+        from scripts.compose_integrity import unmanaged
+        values = Counter({('/script/shootergame.shootergameusersettings', 'bhassavedgame', 'False'): 1,
+                          ('serversettings', 'rconport', '27020'): 1})
+        kept = unmanaged(values, 'GameUserSettings.ini')
+        self.assertEqual(set(kept), {('serversettings', 'rconport', '27020')})
+        self.assertEqual(unmanaged(values, 'Game.ini'), values)
+
 if __name__ == '__main__':
     unittest.main()
