@@ -20,7 +20,7 @@ class ScriptTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         (self.root / "scripts").mkdir()
-        for name in ("start.sh", "backup.sh", "install-update.sh", "ark_config.py"):
+        for name in ("start.sh", "backup.sh", "install-update.sh", "ark_config.py", "ark_game.py"):
             shutil.copy2(SOURCE / "scripts" / name, self.root / "scripts" / name)
         self.payload = {
             "settings": config.DEFAULTS.copy(),

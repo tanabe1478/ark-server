@@ -24,7 +24,7 @@ CONFIG = Path('config/docker-runtime.json')
 STATE = Path('logs/docker')
 CONTAINER_ROOT = '/opt/ark'
 SOURCE_FILES = tuple('scripts/' + n for n in native.OBSERVER_FILES) + (
-    'scripts/ark_config.py', 'scripts/ark_docker.py', 'scripts/ark_docker_runner.py',
+    'scripts/ark_config.py', 'scripts/ark_game.py', 'scripts/ark_docker.py', 'scripts/ark_docker_runner.py',
     'scripts/ark_container_supervisor.py', 'scripts/ark_container_exec.py',
     'scripts/ark_container_observer.py', 'scripts/container_trace.gdb',
     'deploy/docker/Dockerfile.runtime',

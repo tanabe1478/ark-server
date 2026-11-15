@@ -15,15 +15,20 @@ import sys
 import tempfile
 import uuid
 
+if __package__:
+    from . import ark_game as game
+else:
+    import ark_game as game
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTS = {
-    "map": "Genesis",
+    "map": game.DEFAULT_MAP,
     "session_name": "Genesis-Private",
     "max_players": 13,
     "game_port": 7777,
     "query_port": 27015,
 }
-INI_PATH = Path("server/ShooterGame/Saved/Config/LinuxServer/GameUserSettings.ini")
+INI_PATH = game.CONFIG_DIR / "GameUserSettings.ini"
 SETTINGS_PATH = Path("config/server.json")
 GAME_INI_PATH = INI_PATH.with_name("Game.ini")
 GAME_USER_SETTINGS_SECTION = "/Script/ShooterGame.ShooterGameUserSettings"
@@ -190,7 +195,12 @@ def validate_ini_credentials(text):
             rcon = config.getboolean(section, "RCONEnabled", fallback=False)
         except ValueError:
             raise ConfigError("Refusing to start: invalid RCON setting.") from None
-        if rcon:
+        if game.ASA:
+            # ASA has no A2S: saving, player counts and readiness use RCON on
+            # the container-internal port, which compose never publishes.
+            if not rcon or config.get(section, "RCONPort", fallback="") != str(game.RCON_PORT):
+                raise ConfigError("Refusing to start: ASA requires the internal RCON port.")
+        elif rcon:
             raise ConfigError("Refusing to start: RCON is enabled unexpectedly.")
 
 
@@ -251,8 +261,8 @@ def apply_config(root, payload, *, preserve_existing_authentication=False):
             "ServerSettings": {
                 "ServerPassword": payload["password"],
                 "ServerAdminPassword": payload["admin_password"],
-                "RCONEnabled": "False",
-            },
+                "RCONEnabled": "True" if game.ASA else "False",
+            } | ({"RCONPort": str(game.RCON_PORT)} if game.ASA else {}),
             "SessionSettings": {"SessionName": settings["session_name"]},
             "/Script/Engine.GameSession": {"MaxPlayers": str(settings["max_players"])},
             GAME_USER_SETTINGS_SECTION: {"Version": GAME_USER_SETTINGS_VERSION},
@@ -329,6 +339,10 @@ def load_editable_settings(root=ROOT):
 
 
 def mod_inventory(root, active_ids):
+    if game.ASA:
+        # CurseForge MODs are not supported yet; any active one blocks startup.
+        return [{"id": item, "active": True, "content_present": False, "order": index + 1}
+                for index, item in enumerate(active_ids)]
     folder = root / "server/ShooterGame/Content/Mods"
     installed_ids = {path.stem for path in folder.glob("*.mod") if re.fullmatch(MOD_ID, path.stem)}
     result = []
@@ -454,6 +468,12 @@ def launch_url(root=ROOT):
     ids = settings['active_mods']
     if any(item["active"] and not item["content_present"] for item in mod_inventory(root, ids)):
         raise ModFilesMissingError("Active MOD content is missing; install it before starting the server.")
+    if game.ASA:
+        return (
+            f"{settings['map']}?listen?SessionName={settings['session_name']}"
+            f"?MaxPlayers={settings['max_players']}?Port={settings['game_port']}"
+            f"?RCONEnabled=True?RCONPort={game.RCON_PORT}"
+        )
     return (
         f"{settings['map']}?SessionName={settings['session_name']}"
         f"?MaxPlayers={settings['max_players']}?Port={settings['game_port']}"

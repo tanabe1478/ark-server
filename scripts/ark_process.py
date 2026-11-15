@@ -27,7 +27,7 @@ BOOTSTRAP = Path('config/process-bootstrap.json')
 TRANSITION = Path('config/process-transition.json')
 QUALIFICATION = Path('logs/process/production-qualified.json')
 FILES = tuple(sorted(set(n.OBSERVER_FILES) | {
-    'ark_config.py', 'ark_control.py', 'ark_automation.py', 'ark_parent_exec.py',
+    'ark_config.py', 'ark_game.py', 'ark_control.py', 'ark_automation.py', 'ark_parent_exec.py',
     'ark_container_exec.py', 'ark_container_observer.py', 'container_trace.gdb',
     'ark_process.py', 'ark_process_worker.py', 'ark_spawn.py', 'compose_profiles.py', 'compose_integrity.py', 'compose_server.py', 'compose_platform.py',
 }))
