@@ -111,6 +111,7 @@ services:
       # ASA join instructions search the in-game browser for this session name.
       ARK_GAME: ${ARK_GAME:-ase}
       ARK_SESSION_NAME: ${ARK_SESSION_NAME:-}
+      ARK_GAME_PORT: ${ARK_GAME_PORT:-7777}
       # Public IPv4 is discovered over HTTPS; this is the externally published query port.
       ARK_QUERY_PORT: ${ARK_QUERY_PORT:-27015}
       # Optional override for DDNS or a router that remaps the external query port.

@@ -218,7 +218,7 @@ class ComposeEngine(Engine):
         for raw in stopped['Config'].get('Env',[]):
             key,value=raw.split('=',1)
             if key in ('ARK_DISCORD_OFFLINE','ARK_PROJECT','ARK_COMPOSE','ARK_LOCK_DIRECTORY','ARK_CONTROL_SOCKET',
-                       'ARK_GAME','ARK_SESSION_NAME','ARK_QUERY_PORT','ARK_PUBLIC_QUERY_ADDRESS'):environment[key]=value
+                       'ARK_GAME','ARK_SESSION_NAME','ARK_GAME_PORT','ARK_QUERY_PORT','ARK_PUBLIC_QUERY_ADDRESS'):environment[key]=value
         spec = {'Image':image,'User':'0:0','WorkingDir':'/opt/ark','Env':[k+'='+v for k,v in environment.items()],
                 'Labels':labels,'HostConfig':host,'StopSignal':'SIGTERM',
                 'Entrypoint':image_config['Entrypoint'],'Cmd':image_config.get('Cmd'),

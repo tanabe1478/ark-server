@@ -196,10 +196,14 @@ class AsaJoinTextTests(unittest.TestCase):
     def test_asa_points_to_the_in_game_browser_and_dlc(self):
         from unittest.mock import patch
         from scripts.discord_messages import JoinInfo, join_text
-        with patch.dict('os.environ', {'ARK_GAME': 'asa', 'ARK_SESSION_NAME': 'nabeatsu'}):
+        with patch.dict('os.environ', {'ARK_GAME': 'asa', 'ARK_SESSION_NAME': 'nabeatsu', 'ARK_GAME_PORT': '7777'}):
             text = join_text(JoinInfo('ark.example.org:28015'))
+            unknown = join_text(JoinInfo())
         self.assertIn('「nabeatsu」', text)
         self.assertIn('非公式', text)
         self.assertIn('Astraeos の DLC', text)
         self.assertNotIn('Steamの「表示」', text)
-        self.assertNotIn('ark.example.org', text)
+        # Direct connect uses the game port, never the Steam query port.
+        self.assertIn('`open ark.example.org:7777`', text)
+        self.assertNotIn('28015', text)
+        self.assertNotIn('open ', unknown)

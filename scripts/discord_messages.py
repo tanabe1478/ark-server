@@ -99,20 +99,28 @@ class JoinResolver:
             return self.cached
 
 
-def asa_join_text():
-    # ASA servers are not in Steam's server list; players search the in-game browser.
+def asa_join_text(join):
+    # ASA servers are not in Steam's server list: search the in-game browser, or
+    # connect directly to the GAME port (not the query port) from the console.
     name = os.environ.get('ARK_SESSION_NAME', '')
     search = f'「{name}」' if name and len(name) <= 64 and name.isprintable() else 'サーバー名'
-    return '\n'.join(('**ARK: Survival Ascended（PC）からの参加方法**',
+    port = os.environ.get('ARK_GAME_PORT', '7777')
+    port = port if re.fullmatch(r'[1-9][0-9]{0,4}', port) else '7777'
+    lines = ['**ARK: Survival Ascended（PC）からの参加方法**',
         '1. ゲームを起動し「ゲームに参加」を開きます。',
         '2. 上の種類を「非公式」にし、「プレイヤーサーバーを表示」にチェックを入れます。',
-        f'3. 検索欄に{search}と入力し、表示されたサーバーを選んで参加します。求められたら案内済みの参加パスワードを入力してください。',
-        'マップは Astraeos です。参加には Astraeos の DLC が必要です。'))
+        f'3. 検索欄に{search}と入力し、表示されたサーバーを選んで参加します。求められたら案内済みの参加パスワードを入力してください。']
+    if join.public_query_address:
+        host = join.public_query_address.rsplit(':', 1)[0]
+        lines += ['', f'接続先: `{host}:{port}`',
+                  f'一覧に出ないときは、メインメニューでコンソールを開き `open {host}:{port}` と入力しても参加できます。']
+    lines.append('マップは Astraeos です。参加には Astraeos の DLC が必要です。')
+    return '\n'.join(lines)
 
 
 def join_text(join):
     if os.environ.get('ARK_GAME') == 'asa':
-        return asa_join_text()
+        return asa_join_text(join)
     if join.public_query_address:
         target = f'接続先: `{join.public_query_address}`（Steamへの登録用）'
         step = '上の接続先を入力して追加し、サーバーを選んで「接続」します。'
