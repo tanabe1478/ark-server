@@ -192,7 +192,7 @@ def build_client(config, automation, *, join=None):
     client = Bot()
     group = app_commands.Group(name='ark', description='ARKの状態確認・起動・再起動')
 
-    @group.command(name='status', description='ARKの稼働状況・参加人数・Steamからの参加方法を確認')
+    @group.command(name='status', description='ARKの稼働状況・参加人数・参加方法を確認')
     async def status(interaction: discord.Interaction):
         if not await client.permit(interaction, 'status'):
             return
