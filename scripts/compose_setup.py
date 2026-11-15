@@ -40,18 +40,23 @@ def validate(value, *, preserved_authentication=None):
     expected = {'settings', 'password', 'admin_password', 'active_mods', 'multipliers',
                 'discord', 'auto_start', 'auto_stop', 'updates'}
     # `options` is optional so existing bootstraps keep their digest; absent keys stay untouched in the INI.
-    if not isinstance(value, dict) or not expected <= set(value) <= expected | {'options'}:
+    # `owner_chosen_participant_password` explicitly keeps a short join password (e.g. carried
+    # over from ASE); the administrator/RCON password always needs the full policy.
+    if not isinstance(value, dict) or not expected <= set(value) <= expected | {'options', 'owner_chosen_participant_password'}:
         raise ValueError('Bootstrap must contain exactly the documented fields.')
     if not isinstance(value.get('options', {}), dict) or set(value.get('options', {})) - set(c.TOGGLES):
         raise ValueError('Invalid on/off option fields.')
     c.validate_settings(value['settings'])
     if value['settings']['game_port']!=7777 or value['settings']['query_port']!=27015:
         raise ValueError('Compose internal ports are fixed; change published host ports instead.')
+    if value.get('owner_chosen_participant_password', True) is not True:
+        raise ValueError('owner_chosen_participant_password must be true when present.')
     preserving = preserved_authentication is not None and (value['password'],value['admin_password']) == preserved_authentication
     for name in ('password', 'admin_password'):
         item = value[name]
         import re
-        valid = isinstance(item,str) and (bool(re.fullmatch('[A-Za-z0-9_-]{1,128}',item)) if preserving else re_password(item) and not item.upper().startswith(('CHANGE','REPLACE')))
+        short = preserving or (name == 'password' and 'owner_chosen_participant_password' in value)
+        valid = isinstance(item,str) and (bool(re.fullmatch('[A-Za-z0-9_-]{1,128}',item)) if short else re_password(item) and not item.upper().startswith(('CHANGE','REPLACE')))
         if not valid:
             raise ValueError('Set two separate private game passwords before initial setup.')
     if value['password'] == value['admin_password']:
@@ -86,7 +91,8 @@ def re_password(value):
 def configure(root, value):
     preserving = authentication(root/n.SAVED) == (value['password'],value['admin_password'])
     c.apply_config(root, {k: value[k] for k in ('settings', 'password', 'admin_password')},
-                   preserve_existing_authentication=preserving)
+                   preserve_existing_authentication=preserving,
+                   owner_chosen_participant_password='owner_chosen_participant_password' in value)
     changes = value['multipliers'] | value.get('options', {}) | {'active_mods': value['active_mods']}
     plan = c.plan_settings(root, changes)
     c.patch_settings(root, changes, plan['revision'])

@@ -234,15 +234,18 @@ def atomic_write(path, data):
     return changed or permissions_changed
 
 
-def apply_config(root, payload, *, preserve_existing_authentication=False):
+def apply_config(root, payload, *, preserve_existing_authentication=False, owner_chosen_participant_password=False):
     if not isinstance(payload, dict) or set(payload) != {"settings", "password", "admin_password"}:
         raise ConfigError("Expected settings and two separate passwords on standard input.")
     settings = validate_settings(payload["settings"])
     if type(preserve_existing_authentication) is not bool:
         raise ConfigError("Authentication preservation must be explicit.")
-    pattern = r"[A-Za-z0-9_-]{1,128}" if preserve_existing_authentication else r"[A-Za-z0-9_-]{12,128}"
+    if type(owner_chosen_participant_password) is not bool:
+        raise ConfigError("Participant password policy must be explicit.")
     for name in ("password", "admin_password"):
         value = payload[name]
+        short = preserve_existing_authentication or (name == "password" and owner_chosen_participant_password)
+        pattern = r"[A-Za-z0-9_-]{1,128}" if short else r"[A-Za-z0-9_-]{12,128}"
         if not isinstance(value, str) or not re.fullmatch(pattern, value):
             raise ConfigError("New passwords must be 12-128 ASCII letters, digits, underscores or hyphens.")
     if payload["password"] == payload["admin_password"]:

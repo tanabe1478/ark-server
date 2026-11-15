@@ -176,3 +176,34 @@ class ConfigTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ParticipantPasswordPolicyTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.payload = {"settings": config.DEFAULTS.copy(), "password": "nabe", "admin_password": "administrator_9876543210"}
+
+    def test_short_join_password_needs_explicit_owner_choice(self):
+        with self.assertRaises(config.ConfigError):
+            config.apply_config(self.root, self.payload)
+        self.assertTrue(config.apply_config(self.root, self.payload, owner_chosen_participant_password=True))
+
+    def test_admin_password_policy_is_never_relaxed(self):
+        payload = self.payload | {"password": "participant_0123456789", "admin_password": "short"}
+        with self.assertRaises(config.ConfigError):
+            config.apply_config(self.root, payload, owner_chosen_participant_password=True)
+
+    def test_bootstrap_flag_relaxes_only_the_join_password(self):
+        from scripts.compose_setup import validate
+        value = json.loads((Path(__file__).resolve().parents[1] / 'examples/compose-bootstrap.example.json').read_text())
+        value.update(password='nabe', admin_password='administrator_9876543210',
+                     discord={'guild_id': '123456789012345678', 'notification_channel_id': '123456789012345679'})
+        with self.assertRaises(ValueError):
+            validate(copy.deepcopy(value))
+        validate(copy.deepcopy(value) | {'owner_chosen_participant_password': True})
+        for bad in ({'owner_chosen_participant_password': False},
+                    {'owner_chosen_participant_password': True, 'admin_password': 'short'}):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                validate(copy.deepcopy(value) | bad)
