@@ -266,3 +266,14 @@ class AsaQualificationTests(unittest.TestCase):
         source = Path('scripts/compose_profile_probe.py').read_text()
         self.assertIn('n._expected(n.CODE_ROOT)', source)
         self.assertNotIn('compose_profiles', source)
+
+
+class AsaEngineTests(unittest.TestCase):
+    def test_server_targets_match_compose_asa(self):
+        import re
+        from scripts.compose_engine import TARGETS
+        text = Path('compose.asa.yaml').read_text()
+        declared = dict((target, name) for name, target in re.findall(r'- (\w+):(/opt/ark/\S+)', text))
+        extra = {target: value for target, value in TARGETS['server'].items() if target in declared}
+        self.assertEqual(len(declared), 4)
+        self.assertEqual(extra, {target: (name, True) for target, name in declared.items()})

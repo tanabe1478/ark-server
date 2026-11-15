@@ -10,7 +10,7 @@ import subprocess
 import time
 import uuid
 
-from . import ark_shutdown as n
+from . import ark_game, ark_shutdown as n
 from .ark_docker import Engine
 from .ark_control import ControlError
 
@@ -25,6 +25,11 @@ TARGETS = {
   '/opt/ark/config':('settings',True), '/opt/ark/logs':('evidence',True), '/opt/ark/backups':('backups',True),
   '/stage':('staging',True), '/run/ark-locks':('locks',True), '/run/ark-admin':('admin_ipc',False), '/run/ark-platform':('platform',False)},
 }
+if ark_game.ASA:
+    # compose.asa.yaml: the Proton prefix and the runtime-writable game paths.
+    TARGETS['server'] |= {'/opt/ark/' + str(ark_game.COMPAT): ('compat', True)} | {
+        '/opt/ark/' + str(path): (volume, True) for path, volume in
+        zip(ark_game.RUNTIME_WRITABLE, ('asa_mods_data', 'asa_sentry', 'asa_engine_saved'), strict=True)}
 
 
 class UnixHTTP(http.client.HTTPConnection):
