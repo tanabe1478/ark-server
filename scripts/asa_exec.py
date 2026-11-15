@@ -25,7 +25,8 @@ def main():
     libc = ctypes.CDLL(None, use_errno=True)
     if libc.prctl(1, signal.SIGKILL, 0, 0, 0) or os.getppid() != parent:
         return 70
-    restrict_files(root, libc, readable=(game.PROTON,), writable=(root / game.COMPAT,))
+    restrict_files(root, libc, readable=(game.PROTON,),
+                   writable=(root / game.COMPAT, *(root / path for path in game.RUNTIME_WRITABLE)))
     proton = game.PROTON / 'proton'
     os.execv('/usr/bin/python3', ['/usr/bin/python3', str(proton), 'run', str(root / game.BINARY), *sys.argv[2:]])
 

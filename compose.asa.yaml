@@ -1,0 +1,15 @@
+# ASA only (ARK_GAME=asa): add with COMPOSE_FILE=compose.yaml:compose.asa.yaml:compose.override.yaml.
+# The game files stay read-only; these are the only extra places ASA writes.
+services:
+  server:
+    volumes:
+      - compat:/opt/ark/compat
+      - asa_mods_data:/opt/ark/server/ShooterGame/Binaries/Win64/ShooterGame
+      - asa_sentry:/opt/ark/server/ShooterGame/.sentry-native
+      - asa_engine_saved:/opt/ark/server/Engine/Saved
+
+volumes:
+  compat:
+  asa_mods_data:
+  asa_sentry:
+  asa_engine_saved:

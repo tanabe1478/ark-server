@@ -46,4 +46,7 @@ def download(stage, steam_root):
     if not (target / game.BINARY.relative_to('server')).is_file():
         raise ValueError('The ASA server binary is missing after download.')
     (target / STEAM_CLIENT).unlink(missing_ok=True)
+    # Mount points for the runtime-writable volumes inside the read-only game files.
+    for path in game.RUNTIME_WRITABLE:
+        (target / path.relative_to('server')).mkdir(mode=0o700, parents=True, exist_ok=True)
     return target, {'build_id': build_id(target), 'mods': {}}

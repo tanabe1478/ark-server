@@ -19,6 +19,10 @@ DEFAULT_MAP = 'Astraeos_WP' if ASA else 'Genesis'
 # ASA RCON stays inside the server container: compose never publishes it.
 RCON_PORT = 27020
 PROTON = Path('/opt/proton')
+# Besides Saved, ASA writes here at runtime (CurseForge user data, crash
+# reporter, engine config). compose.asa.yaml mounts each as its own volume.
+RUNTIME_WRITABLE = (Path('server/ShooterGame/Binaries/Win64/ShooterGame'),
+                    Path('server/ShooterGame/.sentry-native'), Path('server/Engine/Saved'))
 COMPAT = Path('compat')
 # ASA maps verified to start from app 2430930 without a MOD. ASA packs maps
 # into IoStore containers, so presence cannot be checked from loose .umap files.

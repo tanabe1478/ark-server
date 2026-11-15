@@ -16,7 +16,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 TOP = {'README.md','NETWORK.md','SECURITY.md','LICENSE','NOTICE','.gitignore','.dockerignore',
-       'requirements-discord.txt','requirements-discord.lock','compose.yaml'}
+       'requirements-discord.txt','requirements-discord.lock','compose.yaml','compose.asa.yaml'}
 DIRS = ('scripts','tests','docs','examples','deploy','.github')
 ALLOWED_SUFFIX = {'.py','.sh','.gdb','.md','.json','.yml','.yaml','.in','.j2','.ini','.cfg','.txt','.toml'}
 TOKEN = re.compile(rb'(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{23,28}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{25,100}(?![A-Za-z0-9_-])|mfa\.[A-Za-z0-9_-]{40,}')

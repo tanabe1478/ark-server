@@ -83,7 +83,6 @@ services:
       - evidence:/opt/ark/logs
       - backups:/opt/ark/backups
       - locks:/run/ark-locks
-      - compat:/opt/ark/compat
       - bot_config:/run/ark-bot-config
       - bot_ipc:/run/ark-control
       - admin_ipc:/run/ark-admin
@@ -187,4 +186,3 @@ volumes:
   admin_ipc:
   steam:
   staging:
-  compat:
