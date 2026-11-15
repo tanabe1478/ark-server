@@ -29,7 +29,7 @@ QUALIFICATION = Path('logs/process/production-qualified.json')
 FILES = tuple(sorted(set(n.OBSERVER_FILES) | {
     'ark_config.py', 'ark_game.py', 'ark_control.py', 'ark_automation.py', 'ark_parent_exec.py',
     'ark_container_exec.py', 'ark_container_observer.py', 'container_trace.gdb',
-    'ark_process.py', 'ark_process_worker.py', 'ark_spawn.py', 'compose_profiles.py', 'compose_integrity.py', 'compose_server.py', 'compose_platform.py',
+    'ark_process.py', 'ark_process_worker.py', 'ark_spawn.py', 'asa_exec.py', 'asa_process.py', 'asa_rcon.py', 'asa_worker.py', 'compose_profiles.py', 'compose_integrity.py', 'compose_server.py', 'compose_platform.py',
 }))
 
 
@@ -81,6 +81,9 @@ def bootstrap(root):
 
 
 class ProcessBackend:
+    # Game-specific seams; ASA overrides them in asa_process.
+    WORKER = 'scripts.ark_process_worker'
+
     def __init__(self, root=n.CODE_ROOT, *, on_qualified=None, popen=subprocess.Popen, clock=time.monotonic, sleep=time.sleep):
         from .ark_spawn import PersistentSpawner
         self.root, self.on_qualified, self.popen, self.clock, self.sleep = Path(root), on_qualified, PersistentSpawner(popen), clock, sleep
@@ -121,8 +124,7 @@ class ProcessBackend:
         ready = False
         if active:
             try:
-                from .ark_process_worker import check
-                check(self.root)
+                self.observer_check()
                 ready = True
             except (OSError, ValueError, KeyError):
                 pass
@@ -136,6 +138,10 @@ class ProcessBackend:
                 'Runtime': 'compose-process', 'ObserverReady': ready,
                 'SupervisorReturnCode': code if known_exit else None,
                 'PrivateBootstrap': value.get('private_bootstrap') is True, 'OOMKilled': killed}
+
+    def observer_check(self):
+        from .ark_process_worker import check
+        return check(self.root)
 
     def metrics(self):
         state = self.state()
@@ -155,7 +161,7 @@ class ProcessBackend:
         return {'known': True, 'state': 'inactive', 'enabled': False}
 
     def shutdown_guard(self):
-        return ProcessShutdownGuard(self.root, self)
+        return self.GUARD(self.root, self)
 
     def _launch(self, private=False):
         # Polling must not attribute the OLD child's exit to a new durable
@@ -187,7 +193,7 @@ class ProcessBackend:
                                     'ARK_COMPOSE': '1', 'ARK_PRIVATE_BOOTSTRAP': '1' if private else '0'}
         output = (self.root / 'logs/process' / ('worker-' + invocation + '.txt')).open('wb')
         try:
-            self.child = self.popen(['/usr/bin/python3', '-m', 'scripts.ark_process_worker'],
+            self.child = self.popen(['/usr/bin/python3', '-m', self.WORKER],
                 cwd=n.CODE_ROOT, env=environment, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
         finally:
             output.close()
@@ -403,3 +409,6 @@ class ProcessShutdownGuard:
             n.save(self.directory / 'last-stop.json', value)
         return {'changed': True, 'service': stopped, 'shutdown': self.verify_stopped(stopped),
                 'readiness_verified': False, 'warnings': ['expected_native_abort']}
+
+
+ProcessBackend.GUARD = ProcessShutdownGuard

@@ -212,8 +212,16 @@ def serve():
     root = n.CODE_ROOT
     config = settings(root)
     base = base_bot(root)
-    backend = ProcessBackend(root)
-    controller = Controller(root, backend=backend)
+    from . import ark_game
+    if ark_game.ASA:
+        # ASA answers no A2S: player counts and readiness come from internal RCON.
+        from .asa_process import AsaBackend
+        from . import asa_rcon
+        backend = AsaBackend(root)
+        controller = Controller(root, backend=backend, probe=asa_rcon.probe, roster=asa_rcon.roster)
+    else:
+        backend = ProcessBackend(root)
+        controller = Controller(root, backend=backend)
     automation = ComposeAutomation(base, controller)
     def effective():
         verified = backend.production_qualified()

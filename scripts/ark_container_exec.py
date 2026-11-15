@@ -7,7 +7,7 @@ import signal
 import sys
 
 
-def restrict_files(root, libc):
+def restrict_files(root, libc, readable=(), writable=()):
     # ABI 3 includes truncate protection; fail closed if unavailable.
     if libc.syscall(444, 0, 0, 1) < 3:
         raise RuntimeError('Landlock ABI 3 is required.')
@@ -37,11 +37,11 @@ def restrict_files(root, libc):
     if os.environ.get('ARK_COMPOSE') == '1':
         # The controller shares this PID namespace, not its readable files or
         # IPC authority. The game gets libraries, assets and its own temp home.
-        for path in ('/usr', '/lib', '/lib64', '/etc', '/proc', '/sys', '/dev', root / 'server'):
+        for path in ('/usr', '/lib', '/lib64', '/etc', '/proc', '/sys', '/dev', root / 'server', *readable):
             allow(path, readonly)
     else:
         allow('/', readonly)
-    for path in (root / 'server/ShooterGame/Saved', '/tmp', '/dev/shm', '/dev/null', '/run/ark/home'):
+    for path in (root / 'server/ShooterGame/Saved', '/tmp', '/dev/shm', '/dev/null', '/run/ark/home', *writable):
         allow(path, access)
     if libc.prctl(38, 1, 0, 0, 0) or libc.syscall(446, rules, 0):
         raise RuntimeError('Cannot restrict game filesystem.')

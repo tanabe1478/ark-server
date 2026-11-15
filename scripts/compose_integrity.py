@@ -8,7 +8,7 @@ Full shutdown configuration hashes stay strict, without semantic filtering.
 from collections import Counter
 from pathlib import Path
 
-from . import ark_config as c, ark_shutdown as n
+from . import ark_config as c, ark_game as game, ark_shutdown as n
 
 
 def entries(path):
@@ -42,7 +42,7 @@ def capture(root):
 
 def progress(root):
     files=n.inventory(root/n.SAVED)
-    world='SavedArks/'+c.load_settings(root)['map']+'.ark'
+    world=str(game.world(c.load_settings(root)['map']))
     size=files.get(world,{}).get('bytes')
     if size is not None and size<4096:raise ValueError('Existing world is empty or implausibly small.')
     return {'world':world,'world_bytes':size,

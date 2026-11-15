@@ -1,21 +1,33 @@
 # Source-only Compose runtime. No game/MOD data, Discord token or host bus.
 FROM ubuntu:26.04@sha256:c098726dd9b9733f3e885f8de0ef375206a311b0a317eadc40d347b1115fb944 AS runtime
 ARG DEBIAN_FRONTEND=noninteractive
+# ase: native Linux server. asa: Windows server under GE-Proton with a virtual
+# display (ASA hangs at startup without one) and Vulkan loader (Proton 11 needs it).
+ARG ARK_GAME=ase
+ARG PROTON=GE-Proton11-11
+ARG PROTON_SHA512=45721a7b625b2404d8896bb5e2a8b87fc9623a394873a6dd6b900c839681d5c01ec694ca00d003fc9c733c5f6c5648af8171985656f9fa47e20999fbebdbe235
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 gdb ca-certificates lib32gcc-s1 lib32stdc++6 libcurl4t64 \
+    && if [ "$ARK_GAME" = asa ]; then \
+        apt-get install -y --no-install-recommends curl libfreetype6 libgnutls30t64 libvulkan1 xvfb xauth \
+        && curl -fsSL -o /tmp/proton.tar.gz https://github.com/GloriousEggroll/proton-ge-custom/releases/download/$PROTON/$PROTON-x86_64.tar.gz \
+        && echo "$PROTON_SHA512  /tmp/proton.tar.gz" | sha512sum -c - \
+        && mkdir -p /opt/proton && tar -xzf /tmp/proton.tar.gz -C /opt/proton --strip-components=1 && rm /tmp/proton.tar.gz \
+        && cat /proc/sys/kernel/random/uuid | tr -d - > /etc/machine-id; \
+    elif [ "$ARK_GAME" != ase ]; then exit 1; fi \
     && dpkg-query -W > /usr/share/ark-runtime-packages.txt \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/ark
 COPY scripts/*.py scripts/*.gdb /opt/ark/scripts/
 COPY LICENSE compose.yaml requirements-discord.lock /opt/ark/
 COPY deploy/docker/Dockerfile.compose deploy/docker/Dockerfile.compose-bot /opt/ark/deploy/docker/
-RUN mkdir -p /opt/ark/config /opt/ark/logs /opt/ark/backups /opt/ark/server/ShooterGame/Saved \
+RUN mkdir -p /opt/ark/config /opt/ark/logs /opt/ark/backups /opt/ark/server/ShooterGame/Saved /opt/ark/compat \
     /run/ark/home /run/ark-locks /run/ark-control /run/ark-admin /run/ark-bot-config /stage /steam \
     && chmod 700 /opt/ark/config /opt/ark/logs /opt/ark/backups /run/ark-locks /run/ark-control /run/ark-admin /run/ark-bot-config \
     && python3 -c 'import uuid; from pathlib import Path; from scripts.ark_shutdown import digest,save; save(Path("/opt/ark/build-identity.json"), {"schema":1,"build_id":uuid.uuid4().hex,"os_packages_sha256":digest(Path("/usr/share/ark-runtime-packages.txt"))})' \
     && python3 -m scripts.compose_release
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 LANG=C.UTF-8 HOME=/run/ark/home \
-    ARK_COMPOSE=1 ARK_LOCK_DIRECTORY=/run/ark-locks
+    ARK_COMPOSE=1 ARK_LOCK_DIRECTORY=/run/ark-locks ARK_GAME=$ARK_GAME
 LABEL dev.ark.compose.schema="1" dev.ark.compose.application="ark-server"
 USER 0:0
 STOPSIGNAL SIGTERM

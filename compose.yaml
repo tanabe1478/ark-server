@@ -6,12 +6,14 @@ x-runtime: &runtime
     context: .
     dockerfile: deploy/docker/Dockerfile.compose
     target: runtime
+    args:
+      ARK_GAME: ${ARK_GAME:-ase}
   init: true
   restart: "no"
   read_only: true
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
-  pids_limit: 512
+  pids_limit: ${ARK_PIDS_LIMIT:-512}
   ulimits:
     core: 0
   tmpfs:
@@ -81,6 +83,7 @@ services:
       - evidence:/opt/ark/logs
       - backups:/opt/ark/backups
       - locks:/run/ark-locks
+      - compat:/opt/ark/compat
       - bot_config:/run/ark-bot-config
       - bot_ipc:/run/ark-control
       - admin_ipc:/run/ark-admin
@@ -132,6 +135,8 @@ services:
       context: .
       dockerfile: deploy/docker/Dockerfile.compose
       target: updater
+      args:
+        ARK_GAME: ${ARK_GAME:-ase}
     entrypoint: [/usr/bin/python3, -m, scripts.compose_update]
     command: [run]
     healthcheck: {disable: true}
@@ -179,3 +184,4 @@ volumes:
   admin_ipc:
   steam:
   staging:
+  compat:

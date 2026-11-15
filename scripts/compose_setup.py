@@ -14,7 +14,7 @@ import shutil
 import sys
 import uuid
 
-from . import ark_config as c, ark_shutdown as n
+from . import ark_config as c, ark_game as game, ark_shutdown as n
 from .ark_bot_config import BotConfig
 from .ark_process import bootstrap, descriptor, BOOTSTRAP, STATE, LAUNCH
 from .compose_assets import check, download, copy_assets, vdf
@@ -148,6 +148,12 @@ def initialize(root=n.CODE_ROOT, imported=False):
         manifest = server / 'steamapps/appmanifest_376030.acf'
         if manifest.exists():
             versions['build_id'] = vdf(manifest.read_text())['AppState']['buildid']
+    elif game.ASA:
+        from .asa_assets import download as asa_download
+        stage = Path('/stage/initial-' + job)
+        stage.mkdir(mode=0o700, parents=True)
+        downloaded, versions = asa_download(stage, Path('/steam'))
+        copy_assets(downloaded, server)
     else:
         steam = Path('/steam')
         versions = check(steam, value['active_mods'])

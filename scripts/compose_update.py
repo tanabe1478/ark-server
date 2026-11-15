@@ -147,6 +147,7 @@ class Updater:
         iid = self.folder / (role+'-image-id.txt')
         command = ['/usr/bin/docker','--host',self.engine.endpoint,'build','--pull','--iidfile',str(iid),'-t',label,'-f',dockerfile]
         if target:command += ['--target',target]
+        if role != 'bot':command += ['--build-arg','ARK_GAME='+ark_game.GAME]
         command += ['.']
         environment = {key:os.environ[key] for key in ('HOME','PATH','LANG') if key in os.environ}
         with (self.folder / (role+'-build.log')).open('wb') as output:

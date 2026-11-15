@@ -13,7 +13,7 @@ import stat
 import time
 import uuid
 
-from . import ark_config
+from . import ark_config, ark_game
 
 BINARY = Path('server/ShooterGame/Binaries/Linux/ShooterGameServer')
 SAVED = Path('server/ShooterGame/Saved')
@@ -82,8 +82,7 @@ def contract():
 def install_policy(root):
     root = Path(root)
     if os.environ.get('ARK_COMPOSE') == '1':
-        from .compose_profiles import expected
-        value = expected(root, contract())
+        value = _expected(root)
         save(root / POLICY, value)
         return value
     if digest(root / BINARY) != BINARY_SHA256:
@@ -94,17 +93,25 @@ def install_policy(root):
     return value
 
 
+def _expected(root):
+    """The reviewed game profile: ELF save points for ASE, binary+Proton identity for ASA."""
+    if ark_game.ASA:
+        from .asa_process import expected
+    else:
+        from .compose_profiles import expected
+    return expected(Path(root), contract())
+
+
 def policy(root):
     path = Path(root) / POLICY
     if not path.exists() and not path.is_symlink():
         return None
     value = private_json(path)
     if os.environ.get('ARK_COMPOSE') == '1':
-        from .compose_profiles import expected
         if (type(value.get('schema')) is not int or value.get('enabled') is not True
                 or not isinstance(value.get('native_points'),dict)
                 or any(type(point) is not int for point in value['native_points'].values())
-                or value != expected(Path(root), contract())):
+                or value != _expected(Path(root))):
             raise ShutdownError('Compose native observation profile changed.')
         return value
     if (set(value) != {'schema', 'profile', 'binary_sha256', 'observer_contract', 'enabled'}
