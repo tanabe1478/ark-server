@@ -209,7 +209,7 @@ class ComposeEngine(Engine):
         allowed = {'Binds','Mounts','PortBindings','NetworkMode','ReadonlyRootfs','CapDrop','CapAdd','SecurityOpt','Init',
             'PidsLimit','ShmSize','Ulimits','Tmpfs','LogConfig','Memory','MemorySwap','NanoCpus','CpuQuota',
             'CpuPeriod','CpusetCpus','OomKillDisable','OomScoreAdj','Dns','DnsOptions','DnsSearch','ExtraHosts',
-            'IpcMode','AutoRemove','RestartPolicy','CgroupnsMode','MaskedPaths','ReadonlyPaths'}
+            'IpcMode','AutoRemove','RestartPolicy','CgroupnsMode','MaskedPaths','ReadonlyPaths','Annotations'}
         host = {key:value for key,value in host.items() if key in allowed}
         labels = dict(stopped['Config']['Labels']);labels['com.docker.compose.image']=image
         labels['dev.ark.update']=job
@@ -217,7 +217,8 @@ class ComposeEngine(Engine):
         environment = {x.split('=',1)[0]:x.split('=',1)[1] for x in image_config.get('Env',[])}
         for raw in stopped['Config'].get('Env',[]):
             key,value=raw.split('=',1)
-            if key in ('ARK_DISCORD_OFFLINE','ARK_PROJECT','ARK_COMPOSE','ARK_LOCK_DIRECTORY','ARK_CONTROL_SOCKET'):environment[key]=value
+            if key in ('ARK_DISCORD_OFFLINE','ARK_PROJECT','ARK_COMPOSE','ARK_LOCK_DIRECTORY','ARK_CONTROL_SOCKET',
+                       'ARK_GAME','ARK_SESSION_NAME','ARK_QUERY_PORT','ARK_PUBLIC_QUERY_ADDRESS'):environment[key]=value
         spec = {'Image':image,'User':'0:0','WorkingDir':'/opt/ark','Env':[k+'='+v for k,v in environment.items()],
                 'Labels':labels,'HostConfig':host,'StopSignal':'SIGTERM',
                 'Entrypoint':image_config['Entrypoint'],'Cmd':image_config.get('Cmd'),

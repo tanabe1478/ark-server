@@ -2,6 +2,11 @@
 # The game files stay read-only; these are the only extra places ASA writes.
 services:
   server:
+    # systemd-oomd kills the most pressured cgroup under the user manager when
+    # memory runs short. This marks only the game container "omit" (honoured
+    # because it is owned by the same user), so desktop apps are chosen first.
+    annotations:
+      org.systemd.property.ManagedOOMPreference: "'omit'"
     volumes:
       - compat:/opt/ark/compat
       - asa_mods_data:/opt/ark/server/ShooterGame/Binaries/Win64/ShooterGame
