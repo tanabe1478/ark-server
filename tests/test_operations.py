@@ -111,6 +111,17 @@ class GameRuleTests(Fixture):
         self.assertNotIn('PRIVATE_FAILURE', str(caught.exception))
         self.assertEqual(config.configuration_files(self.root), before)
 
+    def test_speed_leveling_is_also_written_to_game_ini(self):
+        # ASA reads b-prefixed keys from Game.ini; the GameUserSettings key stays.
+        self.apply({'allow_speed_leveling': True, 'allow_flyer_speed_leveling': True})
+        game = config.parse_ini(config.decode_ini((self.root / config.GAME_INI_PATH).read_bytes())[0])
+        section = next(name for name in game.sections() if name.casefold() == '/script/shootergame.shootergamemode')
+        self.assertEqual((game.get(section, 'bAllowSpeedLeveling'), game.get(section, 'bAllowFlyerSpeedLeveling')), ('True', 'True'))
+        self.assertTrue(config.load_editable_settings(self.root)['allow_speed_leveling'])
+        self.apply({'allow_speed_leveling': False})
+        game = config.parse_ini(config.decode_ini((self.root / config.GAME_INI_PATH).read_bytes())[0])
+        self.assertEqual(game.get(section, 'bAllowSpeedLeveling'), 'False')
+
     def test_mod_content_must_have_real_metadata_and_directory(self):
         self.apply({'active_mods': ['731604991']})
         with self.assertRaises(config.ModFilesMissingError):

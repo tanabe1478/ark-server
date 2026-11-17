@@ -48,8 +48,8 @@ RULES = {
 }
 # Fixed ASE on/off keys, written as True/False.
 TOGGLES = {
-    "allow_speed_leveling": {"label": "移動速度のレベル上げ", "ini_key": "AllowSpeedLeveling", "file": "GameUserSettings.ini", "section": "ServerSettings", "default": False, "hint": "オンにすると恐竜の移動速度にポイントを振れます"},
-    "allow_flyer_speed_leveling": {"label": "飛行生物の移動速度のレベル上げ", "ini_key": "AllowFlyerSpeedLeveling", "file": "GameUserSettings.ini", "section": "ServerSettings", "default": False, "hint": "オンにすると飛行生物の移動速度にもポイントを振れます"},
+    "allow_speed_leveling": {"label": "移動速度のレベル上げ", "ini_key": "AllowSpeedLeveling", "file": "GameUserSettings.ini", "section": "ServerSettings", "game_key": "bAllowSpeedLeveling", "default": False, "hint": "オンにすると恐竜の移動速度にポイントを振れます"},
+    "allow_flyer_speed_leveling": {"label": "飛行生物の移動速度のレベル上げ", "ini_key": "AllowFlyerSpeedLeveling", "file": "GameUserSettings.ini", "section": "ServerSettings", "game_key": "bAllowFlyerSpeedLeveling", "default": False, "hint": "オンにすると飛行生物の移動速度にもポイントを振れます"},
     "show_map_player_location": {"label": "地図に自分の位置を表示", "ini_key": "ShowMapPlayerLocation", "file": "GameUserSettings.ini", "section": "ServerSettings", "default": False, "hint": "オンにすると地図に自分の位置と向きが出ます"},
 }
 EDITABLE_SETTINGS = frozenset(("session_name", "max_players", "active_mods", *RULES, *TOGGLES))
@@ -384,6 +384,9 @@ def _settings_plan(root, changes):
             rule = TOGGLES[key]
             destination = game_managed if rule["file"] == "Game.ini" else managed
             destination.setdefault(rule["section"], {})[rule["ini_key"]] = "True" if after[key] else "False"
+            if "game_key" in rule:
+                # ASA reads these from Game.ini (b-prefixed); the old key stays too.
+                game_managed.setdefault("/script/shootergame.shootergamemode", {})[rule["game_key"]] = "True" if after[key] else "False"
         elif key == "active_mods":
             managed.setdefault("ServerSettings", {})["ActiveMods"] = ",".join(after[key])
     def merged(source, fields):
