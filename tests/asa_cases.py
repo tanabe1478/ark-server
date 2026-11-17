@@ -281,6 +281,14 @@ class AsaEngineTests(unittest.TestCase):
 
 
 class AsaUpdaterTests(unittest.TestCase):
+    def test_status_waits_for_a_slow_stopped_controller(self):
+        # A stopped ASA controller hashes Saved on status (5.3 s seen live).
+        import inspect, re
+        from scripts import compose_update
+        source = inspect.getsource(compose_update)
+        self.assertGreaterEqual(compose_update.STATUS_TIMEOUT, 30)
+        self.assertFalse(re.search(r"call\(\{'method':'status'\},timeout=\d", source))
+
     def updater(self, folder):
         from unittest.mock import Mock
         from scripts import compose_update as u

@@ -29,6 +29,10 @@ import socket
 ACTIVE = Path('logs/updates/current.json')
 SOURCE_STAGE=Path('/stage')
 REQUEST = Path('logs/updates/request.json')
+# A stopped controller re-verifies the last stop receipt (hashing Saved) on
+# every status, which took over 5 s with a grown ASA world.
+STATUS_TIMEOUT = 60
+READY_WAIT = 300
 TERMINAL = {'disabled','no_update','deferred','completed','check_failed','candidate_rejected','candidate_blocked','platform_stopped','owner_closed_interrupted'}
 
 
@@ -268,9 +272,9 @@ class Updater:
         replacement=self.engine.replace(old['server'],'server',images['server'],self.record['job'],archive)
         self.save('new_controller_started',replacement_server=replacement)
         if self.external_shutdown:return
-        deadline = time.monotonic()+90
+        deadline = time.monotonic()+READY_WAIT
         while time.monotonic()<deadline:
-            result = call({'method':'status'},timeout=5)
+            result = call({'method':'status'},timeout=STATUS_TIMEOUT)
             if result['ok']:break
             time.sleep(1)
         else:raise ControlError('outcome_unknown')
@@ -433,9 +437,9 @@ class Updater:
             if not server['State']['Running']:
                 if server['State']['OOMKilled'] or server['State']['ExitCode'] not in (0,134):raise ControlError('outcome_unknown')
                 self.engine.api('POST','/containers/'+server['Id']+'/start')
-                deadline=time.monotonic()+60
+                deadline=time.monotonic()+READY_WAIT
                 while time.monotonic()<deadline:
-                    if call({'method':'status'},timeout=5)['ok']:break
+                    if call({'method':'status'},timeout=STATUS_TIMEOUT)['ok']:break
                     time.sleep(1)
                 else:raise ControlError('outcome_unknown')
             result=call({'method':'abort_update','job':job})
@@ -467,9 +471,9 @@ class Updater:
         archive=self.root/'backups'/('update-'+job)
         replacement=self.engine.replace(server,'server',images['server'],job,archive,allow_missing=True)
         self.save('new_controller_started',replacement_server=replacement,owner_requested_recovery=True)
-        deadline=time.monotonic()+60
+        deadline=time.monotonic()+READY_WAIT
         while time.monotonic()<deadline:
-            if call({'method':'status'},timeout=5)['ok']:break
+            if call({'method':'status'},timeout=STATUS_TIMEOUT)['ok']:break
             time.sleep(1)
         else:raise ControlError('outcome_unknown')
         self.save('commit_requested',commit_sent=True)
@@ -578,7 +582,7 @@ def complete_handoff(job):
         if platform_stopped(root,job):
             engine.api('POST','/containers/'+identity+'/stop?t=1500')
             save('platform_stopped',updater_handoff_completed=True);return
-        if not engine.current('server')['State']['Running'] or not call({'method':'status'},timeout=10)['ok']:
+        if not engine.current('server')['State']['Running'] or not call({'method':'status'},timeout=STATUS_TIMEOUT)['ok']:
             raise ControlError('outcome_unknown')
         save('completed',updater_handoff_completed=True,saved_restored=False)
         n.save(archive/'updater-handoff.json',{'phase':'completed','saved_restored':False})
