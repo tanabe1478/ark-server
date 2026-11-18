@@ -155,6 +155,38 @@ class AsaSaveProofTests(unittest.TestCase):
                     self.run_save(reply, write_log, rewrite)
 
 
+class AsaCaptureRetryTests(unittest.TestCase):
+    def test_capture_overlapping_an_autosave_is_copied_again(self):
+        from unittest.mock import patch
+        from scripts import ark_shutdown as n, asa_process
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / n.SAVED / 'SavedArks').mkdir(parents=True)
+            (root / n.SAVED / 'SavedArks/w.ark').write_bytes(b'w' * 10)
+            guard = asa_process.AsaShutdownGuard(root, None)
+            waits = []
+            guard.wait = waits.append
+            real = n.capture
+            calls = []
+            def flaky(source, destination):
+                calls.append(1)
+                if len(calls) == 1:
+                    destination.mkdir(parents=True)
+                    (destination / 'partial').write_bytes(b'x')
+                    raise n.ShutdownError('Saved changed during capture.')
+                return real(source, destination)
+            target = root / 'backups/process-shutdown-x'
+            with patch.object(asa_process.n, 'capture', side_effect=flaky):
+                result = guard._capture_before(target)
+            self.assertEqual((len(calls), waits), (2, [asa_process.CAPTURE_RETRY_SECONDS]))
+            self.assertIn('SavedArks/w.ark', result)
+            self.assertFalse((target / 'before/partial').exists())
+            with patch.object(asa_process.n, 'capture', side_effect=n.ShutdownError('changed')), \
+                 self.assertRaises(n.ShutdownError):
+                guard._capture_before(root / 'backups/process-shutdown-y')
+            self.assertEqual(len(waits), 1 + asa_process.CAPTURE_ATTEMPTS - 1)
+
+
 class AsaProfileTests(unittest.TestCase):
     def test_expected_profile_binds_build_binary_and_proton(self):
         from unittest.mock import patch

@@ -22,6 +22,8 @@ PROFILE = 'asa-proton-v1'
 SAVE_LINE = 'World Save Complete'
 MANIFEST = Path('server/steamapps/appmanifest_2430930.acf')
 _digests = {}
+CAPTURE_ATTEMPTS = 3
+CAPTURE_RETRY_SECONDS = 30
 
 
 def binary_digest(path):
@@ -93,6 +95,21 @@ class AsaBackend(ProcessBackend):
 
 
 class AsaShutdownGuard(ProcessShutdownGuard):
+    def wait(self, seconds):
+        time.sleep(seconds)
+
+    def _capture_before(self, folder):
+        # ASA autosaves every 15 minutes; a copy that overlaps one fails its
+        # unchanged check. Nothing has been sent to the game yet, so copy again.
+        for attempt in range(CAPTURE_ATTEMPTS):
+            try:
+                return n.capture(self.root / n.SAVED, folder / 'before')
+            except n.ShutdownError:
+                if attempt == CAPTURE_ATTEMPTS - 1:
+                    raise
+                shutil.rmtree(folder / 'before', ignore_errors=True)
+                self.wait(CAPTURE_RETRY_SECONDS)
+
     def _verify_receipt(self, state):
         runtime, policy, config = self._current()
         value = n.private_json(self.directory / 'last-stop.json')
@@ -152,7 +169,7 @@ class AsaShutdownGuard(ProcessShutdownGuard):
             raise n.ShutdownError('Insufficient preservation space.')
         nonce = uuid.uuid4().hex
         folder = self.root / 'backups' / ('process-shutdown-' + nonce)
-        n.capture(self.root / n.SAVED, folder / 'before')
+        self._capture_before(folder)
         if recheck is not None:
             reason = recheck()
             if reason is not None:
